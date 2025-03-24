@@ -1,0 +1,30 @@
+[
+  {
+    "id": "1",
+    "name": "Laptop",
+    "category": "electronics",
+    "price": 999.99,
+    "description": "High-performance laptop"
+  },
+  {
+    "id": "2",
+    "name": "Coffee Maker",
+    "category": "appliances",
+    "price": 79.99,
+    "description": "Automatic coffee maker"
+  },
+  {
+    "id": "3",
+    "name": "Wireless Headphones",
+    "category": "electronics",
+    "price": 199.99,
+    "description": "Noise-cancelling headphones"
+  },
+  {
+    "id": "4",
+    "name": "Blender",
+    "category": "appliances",
+    "price": 49.99,
+    "description": "High-speed blender"
+  }
+]

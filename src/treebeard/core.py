@@ -16,12 +16,12 @@ fallback_logger = logging.getLogger('treebeard')
 if not fallback_logger.handlers:
     handler = logging.StreamHandler()
     fallback_logger.addHandler(handler)
-    fallback_logger.setLevel(logging.NOTSET)
+    fallback_logger.setLevel(logging.DEBUG)
 
 # Map log levels to colors
 LEVEL_COLORS = {
     'trace': 'white',
-    'debug': 'grey',
+    'debug': 'dark_grey',
     'info': 'green',
     'warning': 'yellow',
     'error': 'red',
@@ -158,11 +158,11 @@ class Treebeard:
         metadata_str = ''
         if metadata:
             formatted_metadata = pprint.pformat(metadata, indent=2)
-            metadata_str = f"\nMetadata:\n{formatted_metadata}"
+            metadata_str = f"{colored(formatted_metadata, 'dark_grey')}"
 
         # Color the output based on level
         color = LEVEL_COLORS.get(level, 'white')
-        formatted_message = colored(f"{message}{metadata_str}", color)
+        formatted_message = colored(message, color)
 
         # Map to standard logging levels
         level_map = {
@@ -176,6 +176,7 @@ class Treebeard:
         log_level = level_map.get(level, logging.INFO)
 
         fallback_logger.log(log_level, formatted_message)
+        fallback_logger.log(log_level, metadata_str)
 
     def flush(self) -> None:
         """Force flush all pending logs to the server."""

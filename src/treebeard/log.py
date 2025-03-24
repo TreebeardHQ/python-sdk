@@ -110,6 +110,7 @@ class Log:
         """
         log_data = Log._prepare_log_data(message, data, **kwargs)
         log_data['level'] = 'info'
+
         Treebeard().add(log_data)
 
     @staticmethod
