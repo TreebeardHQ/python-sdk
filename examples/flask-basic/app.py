@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from treebeard import Treebeard, Log
 import utils
+import time
 
 app = Flask(__name__)
 
@@ -9,6 +10,12 @@ Treebeard.init(
     api_key="",
     endpoint="https://your-logging-endpoint.com/logs"
 )
+
+# Configure threading support
+app.config['THREADING_ENABLED'] = True  # Enable/disable threading per request
+if app.config['THREADING_ENABLED']:
+    from werkzeug.serving import WSGIRequestHandler
+    WSGIRequestHandler.protocol_version = "HTTP/1.1"  # Enable keep-alive connections
 
 
 @app.route("/products")
@@ -58,5 +65,24 @@ def get_product(product_id):
         Log.end()
 
 
+@app.route("/long-operation")
+def long_operation():
+    trace_id = Log.start("long-operation")
+
+    try:
+        Log.info("Starting long operation")
+        # Simulate a long-running operation
+        time.sleep(30)
+
+        Log.info("Long operation completed")
+        return jsonify({"status": "completed", "duration": "30 seconds"})
+    except Exception as e:
+        Log.error("Error in long operation", error=str(e))
+        return jsonify({"error": str(e)}), 500
+    finally:
+        Log.end()
+
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Configure the development server to use threading
+    app.run(debug=True, threaded=app.config['THREADING_ENABLED'])
