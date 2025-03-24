@@ -1,6 +1,7 @@
 """
 Core functionality for the treebeard library.
 """
+from time import time
 from typing import Optional, Dict, Any, List
 import threading
 import requests
@@ -132,15 +133,27 @@ class Treebeard:
         Args:
             log_entry: The log entry to add (can be any serializable type)
         """
+
         if not self._initialized:
             raise RuntimeError(
                 "Treebeard must be initialized before adding logs")
+
+        log_entry = self.augment(log_entry)
 
         if self._using_fallback:
             self._log_to_fallback(log_entry)
         else:
             if self._batch.add(log_entry):
                 self.flush()
+
+    def augment(self, log_entry: Any) -> None:
+        """Augment a log entry with additional metadata.
+
+        Args:
+            log_entry: The log entry to augment
+        """
+        log_entry['ts'] = log_entry.get('ts', round(time.time() * 1000))
+        return log_entry
 
     def _log_to_fallback(self, log_entry: Dict[str, Any]) -> None:
         """Log to the fallback logger with pretty formatting and colors.
