@@ -1,0 +1,14 @@
+treebeard/
+├── src/
+│   └── treebeard/
+│       ├── __init__.py
+│       └── core.py
+│       └── context.py
+├── tests/
+│   ├── __init__.py
+│   └── test_core.py
+│   └── test_context.py
+├── .gitignore
+├── pyproject.toml
+├── README.md
+└── LICENSE 
