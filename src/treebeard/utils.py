@@ -28,12 +28,12 @@ def detect_threading_mode() -> Tuple[ThreadingMode, str]:
     Returns:
         Tuple of (ThreadingMode enum, reason string)
     """
-    # Check if we're explicitly using eventlet
-    if 'eventlet.green.threading' in sys.modules:
-        return ThreadingMode.EVENTLET, "eventlet.green.threading module detected"
+    # # Check if we're explicitly using eventlet
+    # if 'eventlet.green.threading' in sys.modules:
+    #     return ThreadingMode.EVENTLET, "eventlet.green.threading module detected"
 
-    # Check if we're explicitly using gevent
-    if 'gevent.monkey' in sys.modules and sys.modules['gevent.monkey'].is_module_patched('threading'):
-        return ThreadingMode.GEVENT, "gevent monkey-patched threading detected"
+    # # Check if we're explicitly using gevent
+    # if 'gevent.monkey' in sys.modules and sys.modules['gevent.monkey'].is_module_patched('threading'):
+    #     return ThreadingMode.GEVENT, "gevent monkey-patched threading detected"
 
     return ThreadingMode.THREAD, "using standard Python threading"

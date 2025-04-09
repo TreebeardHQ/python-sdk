@@ -1,7 +1,7 @@
 """
 Core functionality for the treebeard library.
 """
-from time import time
+import time
 from typing import Optional, Dict, Any, List
 import threading
 import requests
@@ -13,11 +13,17 @@ from .batch import LogBatch
 from .utils import ThreadingMode, detect_threading_mode
 
 # Configure the fallback logger
+# Configure fallback logger with stream handler
 fallback_logger = logging.getLogger('treebeard')
+fallback_logger.propagate = False
 if not fallback_logger.handlers:
     handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)-7s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    handler.setFormatter(formatter)
     fallback_logger.addHandler(handler)
-    fallback_logger.setLevel(logging.DEBUG)
+
+fallback_logger.setLevel(logging.DEBUG)
 
 # Map log levels to colors
 LEVEL_COLORS = {
@@ -28,6 +34,9 @@ LEVEL_COLORS = {
     'error': 'red',
     'critical': 'red'
 }
+
+
+has_warned = False
 
 
 class Treebeard:
@@ -133,10 +142,14 @@ class Treebeard:
         Args:
             log_entry: The log entry to add (can be any serializable type)
         """
-
+        global has_warned
         if not self._initialized:
-            raise RuntimeError(
-                "Treebeard must be initialized before adding logs")
+            if not has_warned:
+                fallback_logger.warning(
+                    "Treebeard is not initialized - logs will be output to standard Python logger")
+                has_warned = True
+            self._log_to_fallback(log_entry)
+            return
 
         log_entry = self.augment(log_entry)
 
@@ -231,11 +244,3 @@ class Treebeard:
             thread = threading.Thread(target=send_request)
             thread.daemon = True
             thread.start()
-
-        elif self._threading_mode == ThreadingMode.EVENTLET:
-            import eventlet
-            eventlet.spawn(send_request)
-
-        elif self._threading_mode == ThreadingMode.GEVENT:
-            import gevent
-            gevent.spawn(send_request)

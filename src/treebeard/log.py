@@ -127,6 +127,17 @@ class Log:
         Treebeard().add(log_data)
 
     @staticmethod
+    def warn(message: str, data: Optional[Dict] = None, **kwargs) -> None:
+        """alias for warning
+
+        Args:
+            message: The log message
+            data: Optional dictionary of metadata
+            **kwargs: Additional metadata as keyword arguments
+        """
+        Log.warning(message, data, **kwargs)
+
+    @staticmethod
     def error(message: str, data: Optional[Dict] = None, **kwargs) -> None:
         """Log an error message.
 

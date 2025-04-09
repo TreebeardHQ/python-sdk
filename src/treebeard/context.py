@@ -11,7 +11,6 @@ import threading
 import sys
 from typing import Dict, Any, Optional, Type, ClassVar
 
-import eventlet.corolocal
 from .utils import ThreadingMode, detect_threading_mode
 
 
@@ -35,19 +34,8 @@ class LoggingContext:
         if cls._thread_local is not None:
             return
 
-        threading_mode, _ = detect_threading_mode()
-
-        if threading_mode == ThreadingMode.EVENTLET:
-            import eventlet
-            cls._context_type = 'eventlet'
-            cls._thread_local = eventlet.corolocal.local()
-        elif threading_mode == ThreadingMode.GEVENT:
-            import gevent.local
-            cls._context_type = 'greenlet'
-            cls._thread_local = gevent.local.local()
-        else:
-            cls._context_type = 'thread'
-            cls._thread_local = threading.local()
+        cls._context_type = 'thread'
+        cls._thread_local = threading.local()
 
     @classmethod
     def get_context(cls) -> Dict[str, Any]:
