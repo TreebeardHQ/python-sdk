@@ -1,17 +1,17 @@
 from setuptools import setup, find_packages
 
 # Determine the package name and directory
-package_name = "treebeard"
+package_name = "treebeardhq"
 
 setup(
     name=package_name,
     version="0.1.0.dev1",
     packages=find_packages(include=[package_name, f"{package_name}.*"]),
     description="Treebeard logging library",
-    author="Your Name",
-    author_email="your.email@example.com",
-    url="https://github.com/yourusername/treebeard",
-    python_requires=">=3.7",
+    author="George Mayer",
+    author_email="george@treebeardhq.com",
+    url="https://github.com/treebeardhq/sdk-python",
+    python_requires=">=3.8",
     install_requires=[
         # Add your dependencies here
     ],
