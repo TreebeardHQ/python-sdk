@@ -5,13 +5,13 @@ Treebeard is a Python library for efficient log forwarding with support for trac
 ## Installation
 
 ```bash
-pip install treebeard
+pip install treebeardhq
 ```
 
 ## Quick Start
 
 ```python
-from treebeard import Treebeard, Log
+from treebeardhq import Treebeard, Log
 
 # Initialize Treebeard with your API key
 Treebeard.init(
@@ -46,12 +46,10 @@ finally:
 Treebeard supports multiple logging levels:
 
 ```python
-Log.trace("Detailed trace message")
 Log.debug("Debug information")
 Log.info("General information")
 Log.warning("Warning message")
 Log.error("Error message")
-Log.critical("Critical error message")
 ```
 
 ## Adding Context Data
@@ -59,12 +57,7 @@ Log.critical("Critical error message")
 You can add metadata to your logs in two ways:
 
 ```python
-# Using a data dictionary
-Log.info("User action", data={
-    "user_id": "123",
-    "action": "login",
-    "ip": "192.168.1.1"
-})
+)
 
 # Using keyword arguments
 Log.info("User action",
@@ -112,8 +105,6 @@ Treebeard is thread-safe and supports different threading modes:
 - Standard Python threading (default)
 - Eventlet
 - Gevent
-
-The threading mode is auto-detected but can be explicitly set during initialization.
 
 ## License
 

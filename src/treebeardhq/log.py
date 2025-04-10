@@ -5,6 +5,7 @@ This module provides logging context management functionality,
 allowing creation and management of trace contexts.
 """
 import uuid
+from datetime import datetime
 from typing import Optional, Dict, Any
 from .context import LoggingContext
 from .core import Treebeard
@@ -76,7 +77,37 @@ class Log:
         if kwargs:
             log_data.update(kwargs)
 
-        return log_data
+        # Create a new dictionary to avoid modifying in place
+        processed_data = {}
+
+        for key, value in log_data.items():
+            # Handle datetime objects
+            if isinstance(value, datetime):
+                processed_data[key] = int(value.timestamp())
+            # Handle dictionaries
+            elif isinstance(value, dict):
+                # Create a new dictionary for the processed values
+                processed_dict = {}
+                for k, v in value.items():
+                    if k.endswith("_id"):
+                        processed_dict[k] = v
+                if processed_dict:  # Only add if we found any *_id keys
+                    processed_data[key] = processed_dict
+            # Handle objects
+            elif isinstance(value, object) and not isinstance(value, (int, float, str, bool, type(None))):
+                # Check for *_id properties
+                for attr_name in dir(value):
+                    if attr_name.endswith("_id") and not attr_name.startswith("_"):
+                        try:
+                            attr_value = getattr(value, attr_name)
+                            processed_data[f"{key}_{attr_name}"] = attr_value
+                        except:
+                            continue
+            # Keep all primitive types as is
+            else:
+                processed_data[key] = value
+
+        return processed_data
 
     @staticmethod
     def trace(message: str, data: Optional[Dict] = None, **kwargs) -> None:
