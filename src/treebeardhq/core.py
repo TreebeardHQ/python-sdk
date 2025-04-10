@@ -96,6 +96,7 @@ class Treebeard:
             cls._instance._debug_mode = False
             cls._instance._batch = None
             cls._instance._endpoint = None
+            cls._instance._using_fallback = True
         return cls._instance
 
     def __init__(self, endpoint: Optional[str] = None, batch_size: int = 100, batch_age: float = 5.0):
@@ -103,6 +104,7 @@ class Treebeard:
             return
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
         self._env = os.getenv('ENV') or "production"
+        self._using_fallback = True
         if not self._initialized and endpoint is not None:
             self._endpoint = endpoint
             self._using_fallback = False
