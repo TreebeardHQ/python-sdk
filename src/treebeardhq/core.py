@@ -5,13 +5,11 @@ import os
 import time
 import traceback
 import signal
-import sys
 from typing import Optional, Dict, Any, List, TypedDict
 import threading
 import requests
 import json
 import logging
-import pprint
 from queue import Queue, Empty
 from termcolor import colored
 from .batch import LogBatch
@@ -49,19 +47,21 @@ class LogSenderWorker(threading.Thread):
         self._stop_event = threading.Event()
 
     def run(self):
-        while not self._stop_event.is_set():
+        while True:
+            send_fn = _send_queue.get()
+            if send_fn is None:  # shutdown signal
+                break
             try:
-                send_fn = _send_queue.get(timeout=1)
                 send_fn()
-                _send_queue.task_done()
-            except Empty:
-                continue
             except Exception as e:
                 fallback_logger.error(
                     f"Unexpected error in log sender: {str(e)}")
+            finally:
+                _send_queue.task_done()
 
     def stop(self):
         self._stop_event.set()
+        _send_queue.put(None)
 
 
 _worker = LogSenderWorker()
@@ -73,7 +73,7 @@ _worker.start()
 def _handle_shutdown(sig, frame):
     fallback_logger.info("Shutdown signal received, stopping log sender...")
     _worker.stop()
-    _worker.join(timeout=2)
+    _worker.join()
 
 
 signal.signal(signal.SIGINT, _handle_shutdown)
@@ -87,6 +87,7 @@ class Treebeard:
     _debug_mode: bool = False
     _batch: Optional[LogBatch] = None
     _endpoint: Optional[str] = None
+    _env: Optional[str] = None
 
     def __new__(cls, endpoint: Optional[str] = None, **kwargs):
         if cls._instance is None:
@@ -94,19 +95,22 @@ class Treebeard:
             cls._instance._api_key = None
             cls._instance._debug_mode = False
             cls._instance._batch = None
-            cls._instance.endpoint = None
+            cls._instance._endpoint = None
         return cls._instance
 
     def __init__(self, endpoint: Optional[str] = None, batch_size: int = 100, batch_age: float = 5.0):
+        if Treebeard._initialized:
+            return
+        self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
+        self._env = os.getenv('ENV') or "production"
         if not self._initialized and endpoint is not None:
-            self.endpoint = endpoint
-            self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
+            self._endpoint = endpoint
             self._using_fallback = False
 
     def config(self, api_key: Optional[str] = None, endpoint: Optional[str] = None, batch_size: int = 100, batch_age: float = 5.0) -> None:
         self.api_key = api_key or os.getenv('TREEBEARD_API_KEY')
-        self.endpoint = endpoint or os.getenv(
-            'TREEBEARD_ENDPOINT') or 'https://api.treebeardhq.com/logs'
+        self._endpoint = endpoint or os.getenv(
+            'TREEBEARD_ENDPOINT') or 'https://api.treebeardhq.com/logs/batch'
         self._using_fallback = False
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
         return self
@@ -132,7 +136,7 @@ class Treebeard:
                 raise ValueError(
                     "endpoint must be provided when using API key")
 
-            instance.endpoint = endpoint
+            instance._endpoint = endpoint
             instance._batch = LogBatch(
                 max_size=config.get('batch_size', 100),
                 max_age=config.get('batch_age', 5.0)
@@ -154,11 +158,23 @@ class Treebeard:
         if cls._instance is not None:
             cls._instance._api_key = None
             cls._instance._debug_mode = False
-            cls._instance.endpoint = None
+            cls._instance._endpoint = None
             cls._instance._batch = None
             cls._initialized = False
 
     def add(self, log_entry: Any) -> None:
+
+        if self._using_fallback:
+            key = os.getenv('TREEBEARD_API_KEY')
+            if key:
+                # reset env if we've found a key, just to make sure
+                self._env = os.getenv('ENV') or "production"
+                self._endpoint = os.getenv(
+                    'TREEBEARD_ENDPOINT') or 'https://api.treebeardhq.com/logs'
+                self._using_fallback = False
+                self._api_key = key
+                self._initialized = True
+
         global has_warned
         if not self._initialized:
             if not has_warned:
@@ -170,11 +186,11 @@ class Treebeard:
 
         log_entry = self.augment(log_entry)
 
-        if self._using_fallback:
+        if not self._using_fallback and self._batch.add(self.format(log_entry)):
+            self.flush()
+
+        if self._using_fallback or self._env == "development":
             self._log_to_fallback(log_entry)
-        else:
-            if self._batch.add(self.format(log_entry)):
-                self.flush()
 
     def format(self, log_entry: LogEntry) -> LogEntry:
         result: LogEntry = {}
@@ -262,7 +278,7 @@ class Treebeard:
             for attempt in range(max_retries):
                 try:
                     response = requests.post(
-                        self.endpoint, headers=headers, data=data)
+                        self._endpoint, headers=headers, data=data)
                     if response.ok:
                         return
                     else:

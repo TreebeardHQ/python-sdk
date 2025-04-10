@@ -13,7 +13,7 @@ from .constants import LogEntry
 class LogBatch:
     """Handles batching of log entries."""
 
-    def __init__(self, max_size: int = 100, max_age: float = 5.0):
+    def __init__(self, max_size: int = 100, max_age: float = 10.0):
         """Initialize a new LogBatch.
 
         Args:
@@ -22,7 +22,7 @@ class LogBatch:
         """
         self._logs: List[LogEntry] = []
         self._lock = Lock()
-        self._last_flush = time.time()
+        self._last_flush = int(time.time())
         self.max_size = max_size
         self.max_age = max_age
 
@@ -41,7 +41,7 @@ class LogBatch:
             # Check if we should flush
             should_flush = (
                 len(self._logs) >= self.max_size or
-                (time.time() - self._last_flush) >= self.max_age
+                (int(time.time()) - self._last_flush) >= self.max_age
             )
 
             return should_flush
@@ -55,5 +55,5 @@ class LogBatch:
         with self._lock:
             logs = self._logs
             self._logs = []
-            self._last_flush = time.time()
+            self._last_flush = int(time.time())
             return logs
