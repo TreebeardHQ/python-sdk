@@ -5,7 +5,7 @@ package_name = "treebeardhq"
 
 setup(
     name=package_name,
-    version="0.1.0.dev4",
+    version="0.4.0dev0",
     packages=find_packages(include=[package_name, f"{package_name}.*"]),
     description="Treebeard logging library",
     author="George Mayer",

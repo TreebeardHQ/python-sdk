@@ -13,7 +13,7 @@ import logging
 from queue import Queue, Empty
 from termcolor import colored
 from .batch import LogBatch
-from .constants import COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, LEVEL_KEY, TRACE_ID_KEY, MESSAGE_KEY, TS_KEY, LogEntry
+from .constants import COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, LEVEL_KEY, TRACE_ID_KEY, MESSAGE_KEY, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, FILE_KEY, LINE_KEY
 
 fallback_logger = logging.getLogger('treebeard')
 fallback_logger.propagate = False
@@ -194,14 +194,18 @@ class Treebeard:
         if self._using_fallback or self._env == "development":
             self._log_to_fallback(log_entry)
 
-    def format(self, log_entry: LogEntry) -> LogEntry:
+    def format(self, log_entry: Dict[str, Any]) -> LogEntry:
         result: LogEntry = {}
-        result[COMPACT_TS_KEY] = log_entry.get(
+        result[COMPACT_TS_KEY] = log_entry.pop(
             TS_KEY, round(time.time() * 1000))
-        result[COMPACT_TRACE_ID_KEY] = log_entry.get(TRACE_ID_KEY, '')
-        result[COMPACT_MESSAGE_KEY] = log_entry.get(MESSAGE_KEY, '')
-        result[COMPACT_LEVEL_KEY] = log_entry.get(LEVEL_KEY, 'debug')
-        result['props'] = log_entry.get('props', {})
+        result[COMPACT_TRACE_ID_KEY] = log_entry.pop(TRACE_ID_KEY, '')
+        result[COMPACT_MESSAGE_KEY] = log_entry.pop(MESSAGE_KEY, '')
+        result[COMPACT_LEVEL_KEY] = log_entry.pop(LEVEL_KEY, 'debug')
+        result[COMPACT_FILE_KEY] = log_entry.pop(FILE_KEY, '')
+        result[COMPACT_LINE_KEY] = log_entry.pop(LINE_KEY, '')
+
+        if log_entry:
+            result['props'] = {**log_entry}
         return result
 
     def augment(self, log_entry: Any) -> None:
@@ -213,6 +217,8 @@ class Treebeard:
         message = log_entry.pop('message', '')
         error = log_entry.pop('error', None)
         trace_id = log_entry.pop('trace_id', None)
+        log_entry.pop('file', None)
+        log_entry.pop('line', None)
         ts = log_entry.pop('ts', None)
 
         metadata = {k: v for k, v in log_entry.items() if k != 'level'}

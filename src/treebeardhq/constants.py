@@ -5,12 +5,16 @@ MESSAGE_KEY = "message"
 LEVEL_KEY = "level"
 ERROR_KEY = "error"
 TS_KEY = "ts"
+FILE_KEY = "file"
+LINE_KEY = "line"
 
 
 COMPACT_TRACE_ID_KEY = "tid"
 COMPACT_MESSAGE_KEY = "msg"
 COMPACT_LEVEL_KEY = "lvl"
 COMPACT_TS_KEY = "ts"
+COMPACT_FILE_KEY = "fl"
+COMPACT_LINE_KEY = "ln"
 
 
 class LogEntry(TypedDict, total=False):

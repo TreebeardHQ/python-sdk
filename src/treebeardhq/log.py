@@ -4,12 +4,13 @@ Logging utility module for Treebeard.
 This module provides logging context management functionality,
 allowing creation and management of trace contexts.
 """
+import inspect
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, ERROR_KEY, TS_KEY
+from .constants import TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY
 
 
 class Log:
@@ -59,6 +60,11 @@ class Log:
         Returns:
             Dict containing the complete log entry
         """
+
+        frame = inspect.stack()[2]  # 0: this func, 1: SDK wrapper, 2: user
+        filename = frame.filename
+        line_number = frame.lineno
+
         # Start with the context data
         log_data = LoggingContext.get_all()
 
@@ -79,6 +85,8 @@ class Log:
 
         # Create a new dictionary to avoid modifying in place
         processed_data = {}
+        processed_data[FILE_KEY] = filename
+        processed_data[LINE_KEY] = line_number
 
         for key, value in log_data.items():
             # Handle datetime objects
