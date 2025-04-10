@@ -1,70 +1,50 @@
 """
 Thread-local context for Treebeard logging.
 
-This module provides thread-local storage for logging context,
-supporting different threading models:
+This module provides context storage for logging using contextvars,
+which works across different concurrency models including:
 - Standard Python threads
+- Async/await
 - Greenlets (gevent)
 - Eventlet
 """
-import threading
-import sys
+import contextvars
 from typing import Dict, Any, Optional, Type, ClassVar
-
-from .utils import ThreadingMode, detect_threading_mode
 
 
 class LoggingContext:
-    """Thread-local logging context for Treebeard.
+    """Context storage for Treebeard logging.
 
-    This class stores logging context data in thread-local storage,
-    ensuring each thread/greenlet/eventlet has its own isolated context.
+    This class stores logging context data using contextvars,
+    ensuring proper context isolation across different concurrency models.
     """
-    _thread_local: ClassVar[Any] = None
-    _context_type: ClassVar[str] = None
-
-    @classmethod
-    def init(cls) -> None:
-        """Initialize the thread-local storage appropriate for the environment.
-
-        Detects the threading/concurrency model being used and sets up
-        the appropriate thread-local storage mechanism.
-        """
-        # Only initialize once
-        if cls._thread_local is not None:
-            return
-
-        cls._context_type = 'thread'
-        cls._thread_local = threading.local()
+    _context_var: ClassVar[contextvars.ContextVar[Dict[str, Any]]
+                           ] = contextvars.ContextVar('logging_context', default={})
 
     @classmethod
     def get_context(cls) -> Dict[str, Any]:
-        """Get the current thread-local context dictionary.
+        """Get the current context dictionary.
 
         Returns:
-            A dictionary containing context data for the current thread.
+            A dictionary containing context data for the current context.
         """
-        if cls._thread_local is None:
-            cls.init()
-
-        if not hasattr(cls._thread_local, 'context'):
-            cls._thread_local.context = {}
-        return cls._thread_local.context
+        return cls._context_var.get()
 
     @classmethod
     def set(cls, key: str, value: Any) -> None:
-        """Set a value in the current thread's context.
+        """Set a value in the current context.
 
         Args:
             key: The key to store the value under
             value: The value to store
         """
-        context = cls.get_context()
+        context = cls.get_context().copy()
         context[key] = value
+        cls._context_var.set(context)
 
     @classmethod
     def get(cls, key: str, default: Any = None) -> Any:
-        """Get a value from the current thread's context.
+        """Get a value from the current context.
 
         Args:
             key: The key to retrieve
@@ -78,16 +58,12 @@ class LoggingContext:
 
     @classmethod
     def clear(cls) -> None:
-        """Clear the current thread's context."""
-        if cls._thread_local is None:
-            return
-
-        if hasattr(cls._thread_local, 'context'):
-            cls._thread_local.context = {}
+        """Clear the current context."""
+        cls._context_var.set({})
 
     @classmethod
     def get_all(cls) -> Dict[str, Any]:
-        """Get all context data for the current thread.
+        """Get all context data for the current context.
 
         Returns:
             A dictionary containing all context data

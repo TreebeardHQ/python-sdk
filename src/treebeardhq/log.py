@@ -8,15 +8,14 @@ import uuid
 from typing import Optional, Dict, Any
 from .context import LoggingContext
 from .core import Treebeard
+from .constants import TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, ERROR_KEY, TS_KEY
 
 
 class Log:
     """Logging utility class for managing trace contexts."""
 
-    TRACE_ID_KEY = "trace_id"
-
     @staticmethod
-    def start(name: str) -> str:
+    def start(name: Optional[str] = None) -> str:
         """Start a new logging context with the given name.
 
         If a context already exists, it will be cleared before creating
@@ -35,8 +34,10 @@ class Log:
         trace_id = f"T{uuid.uuid4().hex}"
 
         # Set up new context
-        LoggingContext.set(Log.TRACE_ID_KEY, trace_id)
-        LoggingContext.set("name", name)
+        LoggingContext.set(TRACE_ID_KEY, trace_id)
+
+        if name:
+            LoggingContext.set("name", name)
 
         return trace_id
 
@@ -61,7 +62,11 @@ class Log:
         log_data = LoggingContext.get_all()
 
         # Add the message
-        log_data['message'] = message
+        log_data[MESSAGE_KEY] = message
+
+        if not log_data.get(TRACE_ID_KEY):
+            trace_id = Log.start()
+            log_data[TRACE_ID_KEY] = trace_id
 
         # Merge explicit data dict if provided
         if data is not None:
@@ -83,7 +88,7 @@ class Log:
             **kwargs: Additional metadata as keyword arguments
         """
         log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data['level'] = 'trace'
+        log_data[LEVEL_KEY] = 'trace'
         Treebeard().add(log_data)
 
     @staticmethod
@@ -96,7 +101,7 @@ class Log:
             **kwargs: Additional metadata as keyword arguments
         """
         log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data['level'] = 'debug'
+        log_data[LEVEL_KEY] = 'debug'
         Treebeard().add(log_data)
 
     @staticmethod
@@ -109,7 +114,7 @@ class Log:
             **kwargs: Additional metadata as keyword arguments
         """
         log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data['level'] = 'info'
+        log_data[LEVEL_KEY] = 'info'
 
         Treebeard().add(log_data)
 
@@ -123,7 +128,7 @@ class Log:
             **kwargs: Additional metadata as keyword arguments
         """
         log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data['level'] = 'warning'
+        log_data[LEVEL_KEY] = 'warning'
         Treebeard().add(log_data)
 
     @staticmethod
@@ -147,7 +152,7 @@ class Log:
             **kwargs: Additional metadata as keyword arguments
         """
         log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data['level'] = 'error'
+        log_data[LEVEL_KEY] = 'error'
         Treebeard().add(log_data)
 
     @staticmethod
@@ -160,5 +165,5 @@ class Log:
             **kwargs: Additional metadata as keyword arguments
         """
         log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data['level'] = 'critical'
+        log_data[LEVEL_KEY] = 'critical'
         Treebeard().add(log_data)

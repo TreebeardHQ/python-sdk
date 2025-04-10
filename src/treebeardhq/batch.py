@@ -7,6 +7,7 @@ before they are sent to the server.
 from typing import List, Any, Dict
 from threading import Lock
 import time
+from .constants import LogEntry
 
 
 class LogBatch:
@@ -19,13 +20,13 @@ class LogBatch:
             max_size: Maximum number of entries before auto-flush
             max_age: Maximum age in seconds before auto-flush
         """
-        self._logs: List[Any] = []
+        self._logs: List[LogEntry] = []
         self._lock = Lock()
         self._last_flush = time.time()
         self.max_size = max_size
         self.max_age = max_age
 
-    def add(self, log_entry: Any) -> bool:
+    def add(self, log_entry: LogEntry) -> bool:
         """Add a log entry to the batch.
 
         Args:
@@ -45,7 +46,7 @@ class LogBatch:
 
             return should_flush
 
-    def get_logs(self) -> List[Any]:
+    def get_logs(self) -> List[LogEntry]:
         """Get all cached logs and clear the batch.
 
         Returns:
