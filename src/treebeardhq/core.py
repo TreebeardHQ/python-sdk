@@ -89,7 +89,7 @@ class Treebeard:
     _endpoint: Optional[str] = None
     _env: Optional[str] = None
 
-    def __new__(cls, endpoint: Optional[str] = None, **kwargs):
+    def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._api_key = None
@@ -126,6 +126,10 @@ class Treebeard:
 
         instance = cls()
 
+        api_key = api_key or os.getenv('TREEBEARD_API_KEY')
+        endpoint = config.get('endpoint') or os.getenv(
+            'TREEBEARD_ENDPOINT') or 'https://api.treebeardhq.com/logs/batch'
+
         if api_key is None or not api_key.strip():
             fallback_logger.warning(
                 "No API key provided - logs will be output to standard Python logger")
@@ -133,11 +137,6 @@ class Treebeard:
         else:
             instance._api_key = api_key.strip()
             instance._using_fallback = False
-            endpoint = config.get('endpoint')
-            if not endpoint:
-                raise ValueError(
-                    "endpoint must be provided when using API key")
-
             instance._endpoint = endpoint
             instance._batch = LogBatch(
                 max_size=config.get('batch_size', 100),
@@ -145,7 +144,10 @@ class Treebeard:
             )
 
         instance._debug_mode = bool(config.get('debug_mode', False))
-        cls._initialized = True
+
+        if instance._api_key and instance._endpoint:
+            fallback_logger.info(f"Treebeard initialized.")
+            cls._initialized = True
 
     @property
     def api_key(self) -> Optional[str]:
