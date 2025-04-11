@@ -106,6 +106,7 @@ class Treebeard:
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
         self._env = os.getenv('ENV') or "production"
         self._using_fallback = True
+        self._log_to_stdout = False
         if not self._initialized and endpoint is not None:
             self._endpoint = endpoint
             self._using_fallback = False
@@ -144,7 +145,11 @@ class Treebeard:
                 max_age=config.get('batch_age', 5.0)
             )
 
+        instance._log_to_stdout = bool(config.get('log_to_stdout', False))
         instance._debug_mode = bool(config.get('debug_mode', False))
+
+        fallback_logger.info(
+            f"Treebeard initialized with log_to_stdout: {instance._log_to_stdout}")
 
         if instance._api_key and instance._endpoint:
             fallback_logger.info(f"Treebeard initialized.")
@@ -182,8 +187,13 @@ class Treebeard:
                 self._api_key = key
                 self._initialized = True
                 if not found_api_key:
-                    fallback_logger.info(
-                        f"Treebeard initialized with API key: {key} and endpoint: {self._endpoint}. Terminating logs to stdout. If you would like to output logs to a file, add log_to_stdout=True to your config.")
+                    if self._log_to_stdout:
+                        fallback_logger.info(
+                            f"Treebeard initialized with API key: {key} and endpoint: {self._endpoint}.")
+                    else:
+                        fallback_logger.info(
+                            f"Treebeard initialized with API key: {key} and endpoint: {self._endpoint}. Terminating logs to stdout. If you would like to output logs to a file, add log_to_stdout=True to your config.")
+
                     found_api_key = True
 
         if not self._initialized:
@@ -199,11 +209,12 @@ class Treebeard:
         if not self._using_fallback and self._batch.add(self.format(log_entry)):
             self.flush()
 
-        if self._using_fallback or self._env == "development":
+        if self._using_fallback or self._env == "development" or self._log_to_stdout:
             self._log_to_fallback(log_entry)
 
     def format(self, log_entry: Dict[str, Any]) -> LogEntry:
         result: LogEntry = {}
+        log_entry = log_entry.copy()
         result[COMPACT_TS_KEY] = log_entry.pop(
             TS_KEY, round(time.time() * 1000))
         result[COMPACT_TRACE_ID_KEY] = log_entry.pop(TRACE_ID_KEY, '')
@@ -296,6 +307,8 @@ class Treebeard:
                     response = requests.post(
                         self._endpoint, headers=headers, data=data)
                     if response.ok:
+                        fallback_logger.info(
+                            f"Logs sent successfully. logs sent: {len(logs)}")
                         return
                     else:
                         fallback_logger.warning(
