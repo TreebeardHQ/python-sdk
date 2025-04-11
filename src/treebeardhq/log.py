@@ -88,32 +88,53 @@ class Log:
         processed_data[FILE_KEY] = filename
         processed_data[LINE_KEY] = line_number
 
+        masked_terms = {
+            'password', 'pass', 'pw', 'secret', 'api_key', 'access_token', 'refresh_token',
+            'token', 'key', 'auth', 'credentials', 'credential', 'private_key', 'public_key',
+            'ssh_key', 'certificate', 'cert', 'signature', 'sign', 'hash', 'salt', 'nonce',
+            'session_id', 'session', 'cookie', 'jwt', 'bearer', 'oauth', 'oauth2', 'openid',
+            'client_id', 'client_secret', 'consumer_key', 'consumer_secret', 'aws_access_key',
+            'aws_secret_key', 'aws_session_token', 'azure_key', 'gcp_key', 'api_secret',
+            'encryption_key', 'decryption_key', 'master_key', 'root_key', 'admin_key',
+            'database_password', 'db_password', 'db_pass', 'redis_password', 'redis_pass',
+            'mongodb_password', 'mongodb_pass', 'postgres_password', 'postgres_pass',
+            'mysql_password', 'mysql_pass', 'oracle_password', 'oracle_pass'
+        }
+
         for key, value in log_data.items():
             # Handle datetime objects
             if isinstance(value, datetime):
                 processed_data[key] = int(value.timestamp())
             # Handle dictionaries
             elif isinstance(value, dict):
-                # Create a new dictionary for the processed values
-                processed_dict = {}
                 for k, v in value.items():
-                    if k.endswith("_id"):
-                        processed_dict[k] = v
-                if processed_dict:  # Only add if we found any *_id keys
-                    processed_data[key] = processed_dict
+                    if isinstance(v, (int, float, str, bool, type(None))):
+                        # Mask password-related keys
+                        if any(pw_key in k.lower() for pw_key in masked_terms):
+                            processed_data[f"{key}_{k}"] = '*****'
+                        else:
+                            processed_data[f"{key}_{k}"] = v
             # Handle objects
             elif isinstance(value, object) and not isinstance(value, (int, float, str, bool, type(None))):
-                # Check for *_id properties
                 for attr_name in dir(value):
-                    if attr_name.endswith("_id") and not attr_name.startswith("_"):
+                    if not attr_name.startswith("_"):
                         try:
                             attr_value = getattr(value, attr_name)
-                            processed_data[f"{key}_{attr_name}"] = attr_value
+                            if isinstance(attr_value, (int, float, str, bool, type(None))):
+                                # Mask password-related keys
+                                if any(pw_key in attr_name.lower() for pw_key in masked_terms):
+                                    processed_data[f"{key}_{attr_name}"] = '*****'
+                                else:
+                                    processed_data[f"{key}_{attr_name}"] = attr_value
                         except:
                             continue
             # Keep all primitive types as is
             else:
-                processed_data[key] = value
+                # Mask password-related keys
+                if any(pw_key in key.lower() for pw_key in masked_terms):
+                    processed_data[key] = '*****'
+                else:
+                    processed_data[key] = value
 
         return processed_data
 

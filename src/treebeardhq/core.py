@@ -114,7 +114,7 @@ class Treebeard:
     def config(self, api_key: Optional[str] = None, endpoint: Optional[str] = None, batch_size: int = 100, batch_age: float = 5.0) -> None:
         self.api_key = api_key or os.getenv('TREEBEARD_API_KEY')
         self._endpoint = endpoint or os.getenv(
-            'TREEBEARD_ENDPOINT') or 'https://api.treebeardhq.com/logs/batch'
+            'TREEBEARD_API_URL') or 'https://api.treebeardhq.com/logs/batch'
         self._using_fallback = False
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
         return self
@@ -130,7 +130,7 @@ class Treebeard:
 
         api_key = api_key or os.getenv('TREEBEARD_API_KEY')
         endpoint = config.get('endpoint') or os.getenv(
-            'TREEBEARD_ENDPOINT') or 'https://api.treebeardhq.com/logs/batch'
+            'TREEBEARD_API_URL') or 'https://api.treebeardhq.com/logs/batch'
 
         if api_key is None or not api_key.strip():
             fallback_logger.warning(
@@ -182,7 +182,7 @@ class Treebeard:
                 # reset env if we've found a key, just to make sure
                 self._env = os.getenv('ENV') or "production"
                 self._endpoint = os.getenv(
-                    'TREEBEARD_ENDPOINT') or 'https://api.treebeardhq.com/logs'
+                    'TREEBEARD_API_URL') or 'https://api.treebeardhq.com/logs/batch'
                 self._using_fallback = False
                 self._api_key = key
                 self._initialized = True
