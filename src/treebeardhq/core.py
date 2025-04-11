@@ -106,9 +106,6 @@ class Treebeard:
                  batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE,
                  log_to_stdout: bool = False, debug_mode: bool = False):
 
-        fallback_logger.info(
-            f"Treebeard initialized with config log_to_stdout: {log_to_stdout}, debug_mode: {debug_mode}")
-
         if Treebeard._initialized:
             return
 
