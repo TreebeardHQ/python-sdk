@@ -36,6 +36,7 @@ LEVEL_COLORS = {
 }
 
 has_warned = False
+found_api_key = False
 _send_queue = Queue()
 
 # Worker thread to process sending requests
@@ -167,6 +168,8 @@ class Treebeard:
             cls._initialized = False
 
     def add(self, log_entry: Any) -> None:
+        global found_api_key
+        global has_warned
 
         if self._using_fallback:
             key = os.getenv('TREEBEARD_API_KEY')
@@ -178,8 +181,11 @@ class Treebeard:
                 self._using_fallback = False
                 self._api_key = key
                 self._initialized = True
+                if not found_api_key:
+                    fallback_logger.info(
+                        f"Treebeard initialized with API key: {key} and endpoint: {self._endpoint}. Terminating logs to stdout. If you would like to output logs to a file, add log_to_stdout=True to your config.")
+                    found_api_key = True
 
-        global has_warned
         if not self._initialized:
             if not has_warned:
                 fallback_logger.warning(
