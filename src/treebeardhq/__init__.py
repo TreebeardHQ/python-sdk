@@ -5,7 +5,9 @@ TreebeardHQ - A Python library for forwarding logs to endpoints
 from .core import Treebeard
 from .context import LoggingContext
 from .log import Log
+from .treebeard_flask import TreebeardFlask
 
 __version__ = "0.1.0.dev1"
 
-__all__ = ["Treebeard", "LoggingContext", "Log"]
+__all__ = ["Treebeard", "LoggingContext", "Log",
+           "TreebeardFlask"]

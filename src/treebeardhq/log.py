@@ -4,13 +4,18 @@ Logging utility module for Treebeard.
 This module provides logging context management functionality,
 allowing creation and management of trace contexts.
 """
+import asyncio
 import inspect
+import threading
+import traceback
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Type
+
+from .internal_utils.fallback_logger import fallback_logger
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY
+from .constants import COMPACT_TRACEBACK_KEY, TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY, TRACEBACK_KEY
 
 
 class Log:
@@ -102,10 +107,25 @@ class Log:
         }
 
         for key, value in log_data.items():
+
             if value is None:
                 continue
+
+            if isinstance(value, Exception):
+                if value.__traceback__ is not None:
+                    processed_data[TRACEBACK_KEY] = '\n'.join(traceback.format_exception(
+                        type(value), value, value.__traceback__))
+                    tb = value.__traceback__
+                    while tb.tb_next:  # walk to the last frame
+                        tb = tb.tb_next
+
+                    processed_data[FILE_KEY] = tb.tb_frame.f_code.co_filename
+                    processed_data[LINE_KEY] = tb.tb_lineno
+                else:
+                    processed_data[TRACEBACK_KEY] = str(value)
+
             # Handle datetime objects
-            if isinstance(value, datetime):
+            elif isinstance(value, datetime):
                 processed_data[key] = int(value.timestamp())
             # Handle dictionaries
             elif isinstance(value, dict):
@@ -215,6 +235,7 @@ class Log:
         """
         log_data = Log._prepare_log_data(message, data, **kwargs)
         log_data[LEVEL_KEY] = 'error'
+
         Treebeard().add(log_data)
 
     @staticmethod
@@ -229,3 +250,104 @@ class Log:
         log_data = Log._prepare_log_data(message, data, **kwargs)
         log_data[LEVEL_KEY] = 'critical'
         Treebeard().add(log_data)
+
+    @classmethod
+    def _handle_exception(cls, exc_type: Type[BaseException], exc_value: BaseException, exc_traceback: Any) -> None:
+        """Handle unhandled exceptions in the main thread.
+
+        Args:
+            exc_type: The type of the exception
+            exc_value: The exception instance
+            exc_traceback: The traceback object
+        """
+        try:
+
+            # Log the exception
+            Log.error(
+                "Unhandled exception in main thread",
+                error=exc_value,
+
+
+            )
+
+            # Clear the context after logging
+            LoggingContext.clear()
+
+            # Call the original exception handler
+            if Treebeard._original_excepthook is not None:
+                Treebeard._original_excepthook(
+                    exc_type, exc_value, exc_traceback)
+
+        except Exception:
+            fallback_logger.error("Error getting filename and line number")
+
+    @classmethod
+    def _handle_threading_exception(cls, args: threading.ExceptHookArgs) -> None:
+        """Handle unhandled exceptions in threads.
+
+        Args:
+            args: The exception hook arguments containing exception info
+        """
+        try:
+
+            # Log the exception
+            Log.error(
+                "Unhandled exception in thread",
+                thread_name=args.thread.name,
+                thread_id=args.thread.ident,
+                error=args.exc_value,
+
+            )
+
+            # Clear the context after logging
+            LoggingContext.clear()
+
+        # Call the original exception handler
+            if Treebeard._original_threading_excepthook is not None:
+                Treebeard._original_threading_excepthook(args)
+        except Exception:
+            fallback_logger.error("Error getting filename and line number")
+
+    @classmethod
+    def _handle_async_exception(cls, loop: asyncio.AbstractEventLoop, context: dict) -> None:
+        """Handle unhandled exceptions in async contexts.
+
+        Args:
+            loop: The event loop where the exception occurred
+            context: Dictionary containing exception information
+        """
+        try:
+            exception = context.get('exception')
+
+            if exception:
+                # Log the exception
+                Log.error(
+                    "Unhandled exception in async context",
+                    error=exception,
+
+                    future=context.get('future'),
+                    task=context.get('task'),
+                    message=context.get('message'),
+
+                )
+            else:
+                # Log the error message if no exception is present
+                Log.error(
+                    "Error in async context",
+                    message=context.get('message'),
+                    future=context.get('future'),
+                    task=context.get('task'),
+                )
+
+            # Clear the context after logging
+            LoggingContext.clear()
+
+        # Call the original exception handler
+            if Treebeard._original_loop_exception_handler is not None:
+                Treebeard._original_loop_exception_handler(loop, context)
+        except Exception:
+            fallback_logger.error("Error getting filename and line number")
+
+
+Treebeard.register(Log._handle_exception,
+                   Log._handle_threading_exception, Log._handle_async_exception)

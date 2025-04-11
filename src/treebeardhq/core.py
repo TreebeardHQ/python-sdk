@@ -1,7 +1,9 @@
 """
 Core functionality for the treebeard library.
 """
+import asyncio
 import os
+import sys
 import time
 import traceback
 import signal
@@ -9,22 +11,14 @@ from typing import Optional, Dict, Any, List, TypedDict
 import threading
 import requests
 import json
-import logging
 from queue import Queue, Empty
 from termcolor import colored
+
 from .batch import LogBatch
-from .constants import COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, LEVEL_KEY, TRACE_ID_KEY, MESSAGE_KEY, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, FILE_KEY, LINE_KEY
-
-fallback_logger = logging.getLogger('treebeard')
-fallback_logger.propagate = False
-if not fallback_logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)-7s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-    handler.setFormatter(formatter)
-    fallback_logger.addHandler(handler)
-
-fallback_logger.setLevel(logging.DEBUG)
+import logging
+from .constants import COMPACT_TRACEBACK_KEY, TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, LEVEL_KEY, TRACE_ID_KEY, MESSAGE_KEY, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, FILE_KEY, LINE_KEY
+from .internal_utils.fallback_logger import fallback_logger
+from .context import LoggingContext
 
 LEVEL_COLORS = {
     'trace': 'white',
@@ -94,6 +88,10 @@ class Treebeard:
     _batch: Optional[LogBatch] = None
     _endpoint: Optional[str] = None
     _env: Optional[str] = None
+
+    _original_excepthook: Optional[Any] = None
+    _original_threading_excepthook: Optional[Any] = None
+    _original_loop_exception_handler: Optional[Any] = None
 
     _initialized = False
 
@@ -206,6 +204,7 @@ class Treebeard:
         result[COMPACT_LEVEL_KEY] = log_entry.pop(LEVEL_KEY, 'debug')
         result[COMPACT_FILE_KEY] = log_entry.pop(FILE_KEY, '')
         result[COMPACT_LINE_KEY] = log_entry.pop(LINE_KEY, '')
+        result[COMPACT_TRACEBACK_KEY] = log_entry.pop(TRACEBACK_KEY, '')
 
         if log_entry:
             result['props'] = {**log_entry}
@@ -300,3 +299,47 @@ class Treebeard:
             fallback_logger.error("All attempts to send logs failed.")
 
         _send_queue.put(send_request)
+
+    @classmethod
+    def register(cls, excepthook: Optional[Any] = None, threading_excepthook: Optional[Any] = None, loop_exception_handler: Optional[Any] = None) -> None:
+        """Register the global exception handler for all contexts."""
+        # Register for main thread exceptions
+        if cls._original_excepthook is None:
+            cls._original_excepthook = sys.excepthook
+            sys.excepthook = excepthook
+
+        # Register for threading exceptions
+        if cls._original_threading_excepthook is None:
+            cls._original_threading_excepthook = threading.excepthook
+            threading.excepthook = threading_excepthook
+
+        # Register for asyncio exceptions
+        if cls._original_loop_exception_handler is None:
+            try:
+                loop = asyncio.get_event_loop()
+                cls._original_loop_exception_handler = loop.get_exception_handler()
+                loop.set_exception_handler(loop_exception_handler)
+            except RuntimeError:
+                # No event loop in this thread, that's fine
+                pass
+
+    @classmethod
+    def unregister(cls) -> None:
+        """Unregister the global exception handler from all contexts."""
+        if cls._original_excepthook is not None:
+            sys.excepthook = cls._original_excepthook
+            cls._original_excepthook = None
+
+        if cls._original_threading_excepthook is not None:
+            threading.excepthook = cls._original_threading_excepthook
+            cls._original_threading_excepthook = None
+
+        if cls._original_loop_exception_handler is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                loop.set_exception_handler(
+                    cls._original_loop_exception_handler)
+                cls._original_loop_exception_handler = None
+            except RuntimeError:
+                # No event loop in this thread, that's fine
+                pass
