@@ -80,6 +80,11 @@ def _handle_shutdown(sig, frame):
 signal.signal(signal.SIGINT, _handle_shutdown)
 signal.signal(signal.SIGTERM, _handle_shutdown)
 
+# Constants
+DEFAULT_BATCH_SIZE = 100
+DEFAULT_BATCH_AGE = 5.0
+DEFAULT_API_URL = 'https://api.treebeardhq.com/logs/batch'
+
 
 class Treebeard:
     _instance: Optional['Treebeard'] = None
@@ -90,70 +95,44 @@ class Treebeard:
     _endpoint: Optional[str] = None
     _env: Optional[str] = None
 
-    def __new__(cls):
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._api_key = None
-            cls._instance._debug_mode = False
-            cls._instance._batch = None
-            cls._instance._endpoint = None
-            cls._instance._using_fallback = True
         return cls._instance
 
-    def __init__(self, endpoint: Optional[str] = None, batch_size: int = 100, batch_age: float = 5.0):
+    def __init__(self, api_key: Optional[str] = None, endpoint: Optional[str] = None,
+                 batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE,
+                 log_to_stdout: bool = False, debug_mode: bool = False):
+
         if Treebeard._initialized:
             return
-        self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
-        self._env = os.getenv('ENV') or "production"
-        self._using_fallback = True
-        self._log_to_stdout = False
-        if not self._initialized and endpoint is not None:
-            self._endpoint = endpoint
-            self._using_fallback = False
 
-    def config(self, api_key: Optional[str] = None, endpoint: Optional[str] = None, batch_size: int = 100, batch_age: float = 5.0) -> None:
-        self.api_key = api_key or os.getenv('TREEBEARD_API_KEY')
+        self._api_key = api_key or os.getenv('TREEBEARD_API_KEY')
         self._endpoint = endpoint or os.getenv(
-            'TREEBEARD_API_URL') or 'https://api.treebeardhq.com/logs/batch'
-        self._using_fallback = False
+            'TREEBEARD_API_URL', DEFAULT_API_URL)
+        self._env = os.getenv('ENV', "production")
+        self._log_to_stdout = log_to_stdout
+        self._debug_mode = debug_mode
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
-        return self
+        self._using_fallback = not bool(self._api_key)
+
+        Treebeard._initialized = True
+
+        if self._api_key:
+            fallback_logger.info(
+                f"Treebeard initialized with config: {self.__dict__}")
+        else:
+            fallback_logger.warning(
+                "No API key provided - using fallback logger.")
+
+        if self._log_to_stdout:
+            fallback_logger.info(f"log_to_stdout: {self._log_to_stdout}")
 
     @classmethod
-    def init(cls, api_key: Optional[str] = None, **config: Any) -> None:
-        if cls._initialized:
-            fallback_logger.warning(
-                "Treebeard is already initialized - ignoring config")
-            return
-
-        instance = cls()
-
-        api_key = api_key or os.getenv('TREEBEARD_API_KEY')
-        endpoint = config.get('endpoint') or os.getenv(
-            'TREEBEARD_API_URL') or 'https://api.treebeardhq.com/logs/batch'
-
-        if api_key is None or not api_key.strip():
-            fallback_logger.warning(
-                "No API key provided - logs will be output to standard Python logger")
-            instance._using_fallback = True
-        else:
-            instance._api_key = api_key.strip()
-            instance._using_fallback = False
-            instance._endpoint = endpoint
-            instance._batch = LogBatch(
-                max_size=config.get('batch_size', 100),
-                max_age=config.get('batch_age', 5.0)
-            )
-
-        instance._log_to_stdout = bool(config.get('log_to_stdout', False))
-        instance._debug_mode = bool(config.get('debug_mode', False))
-
-        fallback_logger.info(
-            f"Treebeard initialized with log_to_stdout: {instance._log_to_stdout}")
-
-        if instance._api_key and instance._endpoint:
-            fallback_logger.info(f"Treebeard initialized.")
-            cls._initialized = True
+    def init(cls, **kwargs: Any) -> None:
+        cls(**kwargs)  # Triggers __new__ and __init__
 
     @property
     def api_key(self) -> Optional[str]:
@@ -165,14 +144,17 @@ class Treebeard:
 
     @classmethod
     def reset(cls) -> None:
-        if cls._instance is not None:
+        if cls._instance:
             cls._instance._api_key = None
-            cls._instance._debug_mode = False
             cls._instance._endpoint = None
             cls._instance._batch = None
+            cls._instance._using_fallback = True
+            cls._instance._log_to_stdout = False
+            cls._instance._debug_mode = False
+            cls._instance._env = None
             cls._initialized = False
 
-    def add(self, log_entry: Any) -> None:
+    def add(self, log_entry: Dict[str, Any]) -> None:
         global found_api_key
         global has_warned
 
@@ -180,9 +162,9 @@ class Treebeard:
             key = os.getenv('TREEBEARD_API_KEY')
             if key:
                 # reset env if we've found a key, just to make sure
-                self._env = os.getenv('ENV') or "production"
+                self._env = os.getenv('ENV', "production")
                 self._endpoint = os.getenv(
-                    'TREEBEARD_API_URL') or 'https://api.treebeardhq.com/logs/batch'
+                    'TREEBEARD_API_URL', DEFAULT_API_URL)
                 self._using_fallback = False
                 self._api_key = key
                 self._initialized = True
@@ -204,8 +186,6 @@ class Treebeard:
             self._log_to_fallback(log_entry)
             return
 
-        log_entry = self.augment(log_entry)
-
         if not self._using_fallback and self._batch.add(self.format(log_entry)):
             self.flush()
 
@@ -226,10 +206,6 @@ class Treebeard:
         if log_entry:
             result['props'] = {**log_entry}
         return result
-
-    def augment(self, log_entry: Any) -> None:
-        log_entry['ts'] = log_entry.get('ts', round(time.time() * 1000))
-        return log_entry
 
     def _log_to_fallback(self, log_entry: Dict[str, Any]) -> None:
         level = log_entry.get('level', 'info')

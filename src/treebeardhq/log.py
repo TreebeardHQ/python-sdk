@@ -102,6 +102,8 @@ class Log:
         }
 
         for key, value in log_data.items():
+            if value is None:
+                continue
             # Handle datetime objects
             if isinstance(value, datetime):
                 processed_data[key] = int(value.timestamp())
