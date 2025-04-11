@@ -106,6 +106,9 @@ class Treebeard:
                  batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE,
                  log_to_stdout: bool = False, debug_mode: bool = False):
 
+        fallback_logger.info(
+            f"Treebeard initialized with config log_to_stdout: {log_to_stdout}, debug_mode: {debug_mode}")
+
         if Treebeard._initialized:
             return
 
@@ -113,8 +116,10 @@ class Treebeard:
         self._endpoint = endpoint or os.getenv(
             'TREEBEARD_API_URL', DEFAULT_API_URL)
         self._env = os.getenv('ENV', "production")
-        self._log_to_stdout = log_to_stdout
-        self._debug_mode = debug_mode
+        self._log_to_stdout = log_to_stdout if log_to_stdout is not None else os.getenv(
+            'TREEBEARD_LOG_TO_STDOUT', False)
+        self._debug_mode = os.getenv(
+            'TREEBEARD_DEBUG_MODE', debug_mode)
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
         self._using_fallback = not bool(self._api_key)
 
@@ -168,6 +173,8 @@ class Treebeard:
                 self._using_fallback = False
                 self._api_key = key
                 self._initialized = True
+                self._log_to_stdout = os.getenv(
+                    'TREEBEARD_LOG_TO_STDOUT', self._log_to_stdout)
                 if not found_api_key:
                     if self._log_to_stdout:
                         fallback_logger.info(
