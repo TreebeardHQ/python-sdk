@@ -243,7 +243,7 @@ class Treebeard:
 
         fallback_logger.log(log_level, full_message)
 
-        if error and isinstance(error, Exception):
+        if error and isinstance(error, Exception) and error.__traceback__:
             trace = ''.join(traceback.format_exception(
                 type(error), error, error.__traceback__))
             fallback_logger.log(log_level, trace)
@@ -316,12 +316,13 @@ class Treebeard:
         # Register for asyncio exceptions
         if cls._original_loop_exception_handler is None:
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop:
                 cls._original_loop_exception_handler = loop.get_exception_handler()
                 loop.set_exception_handler(loop_exception_handler)
-            except RuntimeError:
-                # No event loop in this thread, that's fine
-                pass
 
     @classmethod
     def unregister(cls) -> None:

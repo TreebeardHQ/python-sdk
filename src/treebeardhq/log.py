@@ -10,7 +10,7 @@ import threading
 import traceback
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any, Type
+from typing import List, Optional, Dict, Any, Type
 
 from .internal_utils.fallback_logger import fallback_logger
 from .context import LoggingContext
@@ -129,13 +129,7 @@ class Log:
                 processed_data[key] = int(value.timestamp())
             # Handle dictionaries
             elif isinstance(value, dict):
-                for k, v in value.items():
-                    if isinstance(v, (int, float, str, bool, type(None))):
-                        # Mask password-related keys
-                        if any(pw_key in k.lower() for pw_key in masked_terms):
-                            processed_data[f"{key}_{k}"] = '*****'
-                        else:
-                            processed_data[f"{key}_{k}"] = v
+                Log.recurse_and_collect_dict(value, processed_data, key)
             # Handle objects
             elif isinstance(value, object) and not isinstance(value, (int, float, str, bool, type(None))):
                 for attr_name in dir(value):
@@ -347,6 +341,33 @@ class Log:
                 Treebeard._original_loop_exception_handler(loop, context)
         except Exception:
             fallback_logger.error("Error getting filename and line number")
+
+    @staticmethod
+    def recurse_and_collect_dict(data: dict, collector: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+        """
+        Recursively flattens a nested dictionary into a flat dictionary with keys
+        representing the path to each value using underscores. Lists are stored as their count.
+
+        Args:
+            data: The dictionary to traverse.
+            collector: The flat dictionary to populate.
+            prefix: The current key prefix for nesting.
+
+        Returns:
+            The updated collector dictionary.
+        """
+        for key, value in data.items():
+            full_key = f"{prefix}_{key}" if prefix else key
+
+            if isinstance(value, dict):
+                Log.recurse_and_collect_dict(value, collector, full_key)
+            elif isinstance(value, list):
+                collector[f"{full_key}_count"] = len(value)
+            elif isinstance(value, (str, int, float, bool, type(None))):
+                collector[full_key] = value
+            # Optionally handle other types here (e.g. sets, tuples)
+
+        return collector
 
 
 Treebeard.register(Log._handle_exception,
