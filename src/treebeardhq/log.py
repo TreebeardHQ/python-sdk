@@ -275,7 +275,7 @@ class Log:
                     exc_type, exc_value, exc_traceback)
 
         except Exception as e:
-            Log.error("Unhandled exception in SDK", error=e)
+            Log.error("Handled exception in SDK", error=e)
 
     @classmethod
     def _handle_threading_exception(cls, args: threading.ExceptHookArgs) -> None:
@@ -302,7 +302,7 @@ class Log:
             if Treebeard._original_threading_excepthook is not None:
                 Treebeard._original_threading_excepthook(args)
         except Exception:
-            fallback_logger.error("Error getting filename and line number")
+            Log.error("Handled exception in SDK")
 
     @classmethod
     def _handle_async_exception(cls, loop: asyncio.AbstractEventLoop, context: dict) -> None:
@@ -342,7 +342,7 @@ class Log:
             if Treebeard._original_loop_exception_handler is not None:
                 Treebeard._original_loop_exception_handler(loop, context)
         except Exception:
-            fallback_logger.error("Error getting filename and line number")
+            Log.error("Handled exception in SDK")
 
     @staticmethod
     def recurse_and_collect_dict(data: dict, collector: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
