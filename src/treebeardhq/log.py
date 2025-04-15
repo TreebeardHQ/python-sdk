@@ -15,7 +15,7 @@ from typing import List, Optional, Dict, Any, Type
 from .internal_utils.fallback_logger import fallback_logger
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import COMPACT_TRACEBACK_KEY, TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY, TRACEBACK_KEY
+from .constants import COMPACT_TRACEBACK_KEY, TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY, TRACEBACK_KEY, TRACE_NAME_KEY
 
 import logging
 
@@ -48,7 +48,7 @@ class Log:
         LoggingContext.set(TRACE_ID_KEY, trace_id)
 
         if name:
-            LoggingContext.set("tb_trace_name", name)
+            LoggingContext.set(TRACE_NAME_KEY, name)
 
         return trace_id
 
@@ -264,8 +264,6 @@ class Log:
             Log.error(
                 "Unhandled exception in main thread",
                 error=exc_value,
-
-
             )
 
             # Clear the context after logging
@@ -276,8 +274,8 @@ class Log:
                 Treebeard._original_excepthook(
                     exc_type, exc_value, exc_traceback)
 
-        except Exception:
-            fallback_logger.error("Error getting filename and line number")
+        except Exception as e:
+            Log.error("Unhandled exception in SDK", error=e)
 
     @classmethod
     def _handle_threading_exception(cls, args: threading.ExceptHookArgs) -> None:

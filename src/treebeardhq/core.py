@@ -16,7 +16,7 @@ from termcolor import colored
 
 from .batch import LogBatch
 import logging
-from .constants import COMPACT_TRACEBACK_KEY, TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, LEVEL_KEY, TRACE_ID_KEY, MESSAGE_KEY, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, FILE_KEY, LINE_KEY
+from .constants import COMPACT_TRACEBACK_KEY, TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, LEVEL_KEY, TRACE_ID_KEY, MESSAGE_KEY, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, FILE_KEY, LINE_KEY, TRACE_NAME_KEY, COMPACT_TRACE_NAME_KEY
 from .internal_utils.fallback_logger import fallback_logger
 from .context import LoggingContext
 
@@ -208,6 +208,11 @@ class Treebeard:
 
         if log_entry:
             result['props'] = {**log_entry}
+
+        # not sure this is the best way to do this, but that's ok
+        if result.get('props', {}).get(TRACE_NAME_KEY):
+            result['props'][COMPACT_TRACE_NAME_KEY] = result['props'].pop(
+                TRACE_NAME_KEY)
         return result
 
     def _log_to_fallback(self, log_entry: Dict[str, Any]) -> None:

@@ -8,6 +8,7 @@ TS_KEY = "ts"
 FILE_KEY = "file"
 LINE_KEY = "line"
 TRACEBACK_KEY = "traceback"
+TRACE_NAME_KEY = "tb_trace_name"
 
 
 COMPACT_TRACE_ID_KEY = "tid"
@@ -17,6 +18,7 @@ COMPACT_TS_KEY = "ts"
 COMPACT_FILE_KEY = "fl"
 COMPACT_LINE_KEY = "ln"
 COMPACT_TRACEBACK_KEY = "tb"
+COMPACT_TRACE_NAME_KEY = "tn"
 
 
 class LogEntry(TypedDict, total=False):
