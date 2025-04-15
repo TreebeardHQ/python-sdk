@@ -60,7 +60,7 @@ class LogSenderWorker(threading.Thread):
 
 
 _worker = LogSenderWorker()
-_worker.start()
+
 
 # Handle shutdown signals
 
@@ -88,6 +88,7 @@ class Treebeard:
     _batch: Optional[LogBatch] = None
     _endpoint: Optional[str] = None
     _env: Optional[str] = None
+    _worker_started = False
 
     _original_excepthook: Optional[Any] = None
     _original_threading_excepthook: Optional[Any] = None
@@ -130,6 +131,8 @@ class Treebeard:
         if self._log_to_stdout:
             fallback_logger.info(f"log_to_stdout: {self._log_to_stdout}")
 
+        fallback_logger.info(f"LogSenderWorker alive? {_worker.is_alive()}")
+
     @classmethod
     def init(cls, **kwargs: Any) -> None:
         cls(**kwargs)  # Triggers __new__ and __init__
@@ -157,6 +160,7 @@ class Treebeard:
     def add(self, log_entry: Dict[str, Any]) -> None:
         global found_api_key
         global has_warned
+        global _worker
 
         if self._using_fallback:
             key = os.getenv('TREEBEARD_API_KEY')
@@ -189,6 +193,14 @@ class Treebeard:
             return
 
         if not self._using_fallback and self._batch.add(self.format(log_entry)):
+
+            if not Treebeard._worker_started:
+                if not _worker.is_alive():
+                    _worker = LogSenderWorker()
+                    _worker.start()
+                    fallback_logger.info(
+                        "Treebeard log worker started post-fork.")
+                Treebeard._worker_started = True
             self.flush()
 
         if self._using_fallback or self._env == "development" or self._log_to_stdout:
