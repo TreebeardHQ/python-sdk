@@ -17,6 +17,10 @@ from .context import LoggingContext
 from .core import Treebeard
 from .constants import COMPACT_TRACEBACK_KEY, TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY, TRACEBACK_KEY
 
+import logging
+
+dev_logger = logging.getLogger("dev")
+
 
 class Log:
     """Logging utility class for managing trace contexts."""
@@ -44,7 +48,7 @@ class Log:
         LoggingContext.set(TRACE_ID_KEY, trace_id)
 
         if name:
-            LoggingContext.set("name", name)
+            LoggingContext.set("tb_trace_name", name)
 
         return trace_id
 
