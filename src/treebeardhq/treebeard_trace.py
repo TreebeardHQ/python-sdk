@@ -25,9 +25,11 @@ def treebeard_trace(name: Optional[str] = None):
         def wrapper(*args, **kwargs) -> Any:
             try:
                 Log.start(name=name)
-                return func(*args, **kwargs)
+                result = func(*args, **kwargs)
+                Log.complete_success()
+                return result
             except Exception as e:
-                Log.error("unknown error", error=e)
+                Log.complete_error(error=e)
                 raise  # re-raises the same exception, with full traceback
             finally:
                 LoggingContext.clear()

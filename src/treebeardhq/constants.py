@@ -21,6 +21,12 @@ COMPACT_TRACEBACK_KEY = "tb"
 COMPACT_TRACE_NAME_KEY = "tn"
 
 
+# Trace markers
+TRACE_START_MARKER = "tb_trace_start"
+TRACE_COMPLETE_SUCCESS_MARKER = "tb_trace_complete_success"
+TRACE_COMPLETE_ERROR_MARKER = "tb_trace_complete_error"
+
+
 class LogEntry(TypedDict, total=False):
     """A typed dictionary representing a log entry."""
     lvl: str

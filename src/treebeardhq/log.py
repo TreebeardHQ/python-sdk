@@ -15,7 +15,7 @@ from typing import List, Optional, Dict, Any, Type
 from .internal_utils.fallback_logger import fallback_logger
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import COMPACT_TRACEBACK_KEY, TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY, TRACEBACK_KEY, TRACE_NAME_KEY
+from .constants import COMPACT_TRACEBACK_KEY, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY, TRACE_START_MARKER, TRACEBACK_KEY, TRACE_NAME_KEY
 
 import logging
 
@@ -50,12 +50,26 @@ class Log:
         if name:
             LoggingContext.set(TRACE_NAME_KEY, name)
 
+        Log.info(TRACE_START_MARKER)
+
         return trace_id
 
     @staticmethod
     def end() -> None:
         """End the current logging context by clearing all context data."""
         LoggingContext.clear()
+
+    @staticmethod
+    def complete_success() -> None:
+        """Mark the completion of a successful trace."""
+        Log.info(TRACE_COMPLETE_SUCCESS_MARKER)
+        Log.end()
+
+    @staticmethod
+    def complete_error(data: Optional[Dict] = None, **kwargs) -> None:
+        """Mark the completion of an error trace."""
+        Log.error(TRACE_COMPLETE_ERROR_MARKER, data, **kwargs)
+        Log.end()
 
     @staticmethod
     def _prepare_log_data(message: str, data: Optional[Dict] = None, **kwargs) -> Dict[str, Any]:
@@ -73,6 +87,8 @@ class Log:
         frame = inspect.stack()[2]  # 0: this func, 1: SDK wrapper, 2: user
         filename = frame.filename
         line_number = frame.lineno
+
+        fallback_logger.info(f"Logging from {filename}:{line_number}")
 
         # Start with the context data
         log_data = LoggingContext.get_all()
@@ -125,6 +141,7 @@ class Log:
 
                     processed_data[FILE_KEY] = tb.tb_frame.f_code.co_filename
                     processed_data[LINE_KEY] = tb.tb_lineno
+
                 else:
                     processed_data[TRACEBACK_KEY] = str(value)
 

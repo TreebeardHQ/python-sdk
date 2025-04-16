@@ -47,8 +47,8 @@ class TreebeardFlask:
         def clear_context(exc):
             """Clear the logging context when a request ends."""
             if exc:
-                Log.error("Request teardown with exception", error=exc)
-
-            LoggingContext.clear()
+                Log.complete_error(error=exc)
+            else:
+                Log.complete_success()
 
         app._treebeard_instrumented = True
