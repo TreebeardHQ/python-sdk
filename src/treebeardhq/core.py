@@ -93,6 +93,7 @@ class Treebeard:
     _original_excepthook: Optional[Any] = None
     _original_threading_excepthook: Optional[Any] = None
     _original_loop_exception_handler: Optional[Any] = None
+    _project_name: Optional[str] = None
 
     _initialized = False
 
@@ -103,11 +104,12 @@ class Treebeard:
 
     def __init__(self, api_key: Optional[str] = None, endpoint: Optional[str] = None,
                  batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE,
-                 log_to_stdout: bool = False, debug_mode: bool = False):
+                 log_to_stdout: bool = False, debug_mode: bool = False, project_name: Optional[str] = None):
 
         if Treebeard._initialized:
             return
 
+        self._project_name = project_name
         self._api_key = api_key or os.getenv('TREEBEARD_API_KEY')
         self._endpoint = endpoint or os.getenv(
             'TREEBEARD_API_URL', DEFAULT_API_URL)
@@ -293,7 +295,7 @@ class Treebeard:
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self._api_key}'
         }
-        data = json.dumps({'logs': logs})
+        data = json.dumps({'logs': logs, 'project_name': self._project_name})
 
         def send_request():
             max_retries = 3
