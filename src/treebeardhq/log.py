@@ -6,6 +6,8 @@ allowing creation and management of trace contexts.
 """
 import asyncio
 import inspect
+import os
+import re
 import threading
 import traceback
 import uuid
@@ -20,6 +22,23 @@ from .constants import COMPACT_TRACEBACK_KEY, TRACE_COMPLETE_ERROR_MARKER, TRACE
 import logging
 
 dev_logger = logging.getLogger("dev")
+
+masked_terms = {
+    'password', 'pass', 'pw', 'secret', 'api_key', 'access_token', 'refresh_token',
+    'token', 'key', 'auth', 'credentials', 'credential', 'private_key', 'public_key',
+    'ssh_key', 'certificate', 'cert', 'signature', 'sign', 'hash', 'salt', 'nonce',
+    'session_id', 'session', 'cookie', 'jwt', 'bearer', 'oauth', 'oauth2', 'openid',
+    'client_id', 'client_secret', 'consumer_key', 'consumer_secret', 'aws_access_key',
+    'aws_secret_key', 'aws_session_token', 'azure_key', 'gcp_key', 'api_secret',
+    'encryption_key', 'decryption_key', 'master_key', 'root_key', 'admin_key',
+    'database_password', 'db_password', 'db_pass', 'redis_password', 'redis_pass',
+    'mongodb_password', 'mongodb_pass', 'postgres_password', 'postgres_pass',
+    'mysql_password', 'mysql_pass', 'oracle_password', 'oracle_pass'
+}
+
+pattern = re.compile(
+    r"(?P<db>[a-z\+]+)://(?P<user>[a-zA-Z0-9_-]+):(?P<pw>[a-zA-Z0-9_]+)@(?P<host>[\.a-zA-Z0-9_-]+):(?P<port>\d+)"
+)
 
 
 class Log:
@@ -39,37 +58,50 @@ class Log:
             The generated trace ID
         """
         # Clear any existing context
-        Log.end()
+        try:
+            Log.end()
 
-        # Generate new trace ID
-        trace_id = f"T{uuid.uuid4().hex}"
+            # Generate new trace ID
+            trace_id = f"T{uuid.uuid4().hex}"
 
-        # Set up new context
-        LoggingContext.set(TRACE_ID_KEY, trace_id)
+            # Set up new context
+            LoggingContext.set(TRACE_ID_KEY, trace_id)
 
-        if name:
-            LoggingContext.set(TRACE_NAME_KEY, name)
+            if name:
+                LoggingContext.set(TRACE_NAME_KEY, name)
 
-        Log.info(TRACE_START_MARKER, data, **kwargs)
+            Log.info(TRACE_START_MARKER, data, **kwargs)
 
-        return trace_id
+            return trace_id
+        except Exception as e:
+            fallback_logger.error("Error in Log.start", error=e)
+            return None
 
     @staticmethod
     def end() -> None:
-        """End the current logging context by clearing all context data."""
-        LoggingContext.clear()
+        try:
+            """End the current logging context by clearing all context data."""
+            LoggingContext.clear()
+        except Exception as e:
+            fallback_logger.error("Error in Log.end", error=e)
 
     @staticmethod
     def complete_success() -> None:
         """Mark the completion of a successful trace."""
-        Log.info(TRACE_COMPLETE_SUCCESS_MARKER)
-        Log.end()
+        try:
+            Log.info(TRACE_COMPLETE_SUCCESS_MARKER)
+            Log.end()
+        except Exception as e:
+            fallback_logger.error("Error in Log.complete_success", error=e)
 
     @staticmethod
     def complete_error(data: Optional[Dict] = None, **kwargs) -> None:
         """Mark the completion of an error trace."""
-        Log.error(TRACE_COMPLETE_ERROR_MARKER, data, **kwargs)
-        Log.end()
+        try:
+            Log.error(TRACE_COMPLETE_ERROR_MARKER, data, **kwargs)
+            Log.end()
+        except Exception as e:
+            fallback_logger.error("Error in Log.complete_error", error=e)
 
     @staticmethod
     def _prepare_log_data(message: str, data: Optional[Dict] = None, **kwargs) -> Dict[str, Any]:
@@ -83,97 +115,97 @@ class Log:
         Returns:
             Dict containing the complete log entry
         """
+        try:
+            filename = None
+            line_number = None
+            locals_dict = {}
+            frame_info = inspect.stack()
 
-        frame = inspect.stack()[2]  # 0: this func, 1: SDK wrapper, 2: user
-        filename = frame.filename
-        line_number = frame.lineno
+            # don't take a frame from the SDK wrapper
+            for frame_info in inspect.stack():
+                frame_file = frame_info.filename
+                if "treebeardhq" not in frame_file:
+                    filename = frame_file
+                    line_number = frame_info.lineno
+                    locals_dict = Log.extract_relevant_locals(
+                        frame_info.frame.f_locals)
+                    break
 
-        fallback_logger.info(f"Logging from {filename}:{line_number}")
+            # Start with the context data
+            log_data = LoggingContext.get_all()
 
-        # Start with the context data
-        log_data = LoggingContext.get_all()
+            # Add the message
+            log_data[MESSAGE_KEY] = message
+            log_data['f_locals'] = locals_dict
 
-        # Add the message
-        log_data[MESSAGE_KEY] = message
+            if not log_data.get(TRACE_ID_KEY):
+                trace_id = Log.start()
+                log_data[TRACE_ID_KEY] = trace_id
 
-        if not log_data.get(TRACE_ID_KEY):
-            trace_id = Log.start()
-            log_data[TRACE_ID_KEY] = trace_id
+            # Merge explicit data dict if provided
+            if data is not None:
+                log_data.update(data)
 
-        # Merge explicit data dict if provided
-        if data is not None:
-            log_data.update(data)
+            # Merge kwargs
+            if kwargs:
+                log_data.update(kwargs)
 
-        # Merge kwargs
-        if kwargs:
-            log_data.update(kwargs)
+            # Create a new dictionary to avoid modifying in place
+            processed_data = {}
+            processed_data[FILE_KEY] = filename
+            processed_data[LINE_KEY] = line_number
 
-        # Create a new dictionary to avoid modifying in place
-        processed_data = {}
-        processed_data[FILE_KEY] = filename
-        processed_data[LINE_KEY] = line_number
+            for key, value in log_data.items():
 
-        masked_terms = {
-            'password', 'pass', 'pw', 'secret', 'api_key', 'access_token', 'refresh_token',
-            'token', 'key', 'auth', 'credentials', 'credential', 'private_key', 'public_key',
-            'ssh_key', 'certificate', 'cert', 'signature', 'sign', 'hash', 'salt', 'nonce',
-            'session_id', 'session', 'cookie', 'jwt', 'bearer', 'oauth', 'oauth2', 'openid',
-            'client_id', 'client_secret', 'consumer_key', 'consumer_secret', 'aws_access_key',
-            'aws_secret_key', 'aws_session_token', 'azure_key', 'gcp_key', 'api_secret',
-            'encryption_key', 'decryption_key', 'master_key', 'root_key', 'admin_key',
-            'database_password', 'db_password', 'db_pass', 'redis_password', 'redis_pass',
-            'mongodb_password', 'mongodb_pass', 'postgres_password', 'postgres_pass',
-            'mysql_password', 'mysql_pass', 'oracle_password', 'oracle_pass'
-        }
+                if value is None:
+                    continue
 
-        for key, value in log_data.items():
+                if isinstance(value, Exception):
+                    if value.__traceback__ is not None:
+                        processed_data[TRACEBACK_KEY] = '\n'.join(traceback.format_exception(
+                            type(value), value, value.__traceback__))
+                        tb = value.__traceback__
+                        while tb.tb_next:  # walk to the last frame
+                            tb = tb.tb_next
 
-            if value is None:
-                continue
+                        processed_data[FILE_KEY] = tb.tb_frame.f_code.co_filename
+                        processed_data[LINE_KEY] = tb.tb_lineno
 
-            if isinstance(value, Exception):
-                if value.__traceback__ is not None:
-                    processed_data[TRACEBACK_KEY] = '\n'.join(traceback.format_exception(
-                        type(value), value, value.__traceback__))
-                    tb = value.__traceback__
-                    while tb.tb_next:  # walk to the last frame
-                        tb = tb.tb_next
+                    else:
+                        processed_data[TRACEBACK_KEY] = str(value)
 
-                    processed_data[FILE_KEY] = tb.tb_frame.f_code.co_filename
-                    processed_data[LINE_KEY] = tb.tb_lineno
-
+                # Handle datetime objects
+                elif isinstance(value, datetime):
+                    processed_data[key] = int(value.timestamp())
+                # Handle dictionaries
+                elif isinstance(value, dict):
+                    Log.recurse_and_collect_dict(value, processed_data, key)
+                # Handle objects
+                elif isinstance(value, object) and not isinstance(value, (int, float, str, bool, type(None))):
+                    for attr_name in dir(value):
+                        if not attr_name.startswith("_"):
+                            try:
+                                attr_value = getattr(value, attr_name)
+                                if isinstance(attr_value, (int, float, str, bool, type(None))):
+                                    # Mask password-related keys
+                                    if any(pw_key in attr_name.lower() for pw_key in masked_terms):
+                                        processed_data[f"{key}_{attr_name}"] = '*****'
+                                    else:
+                                        processed_data[f"{key}_{attr_name}"] = attr_value
+                            except:
+                                continue
+                # Keep all primitive types as is
                 else:
-                    processed_data[TRACEBACK_KEY] = str(value)
+                    # Mask password-related keys
+                    if any(pw_key in key.lower() for pw_key in masked_terms):
+                        processed_data[key] = '*****'
+                    else:
+                        processed_data[key] = value
 
-            # Handle datetime objects
-            elif isinstance(value, datetime):
-                processed_data[key] = int(value.timestamp())
-            # Handle dictionaries
-            elif isinstance(value, dict):
-                Log.recurse_and_collect_dict(value, processed_data, key)
-            # Handle objects
-            elif isinstance(value, object) and not isinstance(value, (int, float, str, bool, type(None))):
-                for attr_name in dir(value):
-                    if not attr_name.startswith("_"):
-                        try:
-                            attr_value = getattr(value, attr_name)
-                            if isinstance(attr_value, (int, float, str, bool, type(None))):
-                                # Mask password-related keys
-                                if any(pw_key in attr_name.lower() for pw_key in masked_terms):
-                                    processed_data[f"{key}_{attr_name}"] = '*****'
-                                else:
-                                    processed_data[f"{key}_{attr_name}"] = attr_value
-                        except:
-                            continue
-            # Keep all primitive types as is
-            else:
-                # Mask password-related keys
-                if any(pw_key in key.lower() for pw_key in masked_terms):
-                    processed_data[key] = '*****'
-                else:
-                    processed_data[key] = value
-
-        return processed_data
+            return processed_data
+        except Exception as e:
+            fallback_logger.error("Error in Log._prepare_log_data", error=e)
+            return {}
 
     @staticmethod
     def trace(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -184,9 +216,12 @@ class Log:
             data: Optional dictionary of metadata
             **kwargs: Additional metadata as keyword arguments
         """
-        log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data[LEVEL_KEY] = 'trace'
-        Treebeard().add(log_data)
+        try:
+            log_data = Log._prepare_log_data(message, data, **kwargs)
+            log_data[LEVEL_KEY] = 'trace'
+            Treebeard().add(log_data)
+        except Exception as e:
+            fallback_logger.error("Error in Log.trace", error=e)
 
     @staticmethod
     def debug(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -197,9 +232,12 @@ class Log:
             data: Optional dictionary of metadata
             **kwargs: Additional metadata as keyword arguments
         """
-        log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data[LEVEL_KEY] = 'debug'
-        Treebeard().add(log_data)
+        try:
+            log_data = Log._prepare_log_data(message, data, **kwargs)
+            log_data[LEVEL_KEY] = 'debug'
+            Treebeard().add(log_data)
+        except Exception as e:
+            fallback_logger.error("Error in Log.debug", error=e)
 
     @staticmethod
     def info(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -210,10 +248,12 @@ class Log:
             data: Optional dictionary of metadata
             **kwargs: Additional metadata as keyword arguments
         """
-        log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data[LEVEL_KEY] = 'info'
-
-        Treebeard().add(log_data)
+        try:
+            log_data = Log._prepare_log_data(message, data, **kwargs)
+            log_data[LEVEL_KEY] = 'info'
+            Treebeard().add(log_data)
+        except Exception as e:
+            fallback_logger.error("Error in Log.info", error=e)
 
     @staticmethod
     def warning(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -224,9 +264,12 @@ class Log:
             data: Optional dictionary of metadata
             **kwargs: Additional metadata as keyword arguments
         """
-        log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data[LEVEL_KEY] = 'warning'
-        Treebeard().add(log_data)
+        try:
+            log_data = Log._prepare_log_data(message, data, **kwargs)
+            log_data[LEVEL_KEY] = 'warning'
+            Treebeard().add(log_data)
+        except Exception as e:
+            fallback_logger.error("Error in Log.warning", error=e)
 
     @staticmethod
     def warn(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -237,7 +280,10 @@ class Log:
             data: Optional dictionary of metadata
             **kwargs: Additional metadata as keyword arguments
         """
-        Log.warning(message, data, **kwargs)
+        try:
+            Log.warning(message, data, **kwargs)
+        except Exception as e:
+            fallback_logger.error("Error in Log.warn", error=e)
 
     @staticmethod
     def error(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -248,10 +294,12 @@ class Log:
             data: Optional dictionary of metadata
             **kwargs: Additional metadata as keyword arguments
         """
-        log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data[LEVEL_KEY] = 'error'
-
-        Treebeard().add(log_data)
+        try:
+            log_data = Log._prepare_log_data(message, data, **kwargs)
+            log_data[LEVEL_KEY] = 'error'
+            Treebeard().add(log_data)
+        except Exception as e:
+            fallback_logger.error("Error in Log.error", error=e)
 
     @staticmethod
     def critical(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -262,9 +310,12 @@ class Log:
             data: Optional dictionary of metadata
             **kwargs: Additional metadata as keyword arguments
         """
-        log_data = Log._prepare_log_data(message, data, **kwargs)
-        log_data[LEVEL_KEY] = 'critical'
-        Treebeard().add(log_data)
+        try:
+            log_data = Log._prepare_log_data(message, data, **kwargs)
+            log_data[LEVEL_KEY] = 'critical'
+            Treebeard().add(log_data)
+        except Exception as e:
+            fallback_logger.error("Error in Log.critical", error=e)
 
     @classmethod
     def _handle_exception(cls, exc_type: Type[BaseException], exc_value: BaseException, exc_traceback: Any) -> None:
@@ -383,11 +434,34 @@ class Log:
             elif isinstance(value, list):
                 collector[f"{full_key}_count"] = len(value)
             elif isinstance(value, (str, int, float, bool, type(None))):
-                collector[full_key] = value
+                if any(pw_key in full_key.lower() for pw_key in masked_terms):
+                    collector[full_key] = '*****'
+                elif "url" in full_key.lower():
+                    collector[full_key] = pattern.sub(mask_pw, value)
             # Optionally handle other types here (e.g. sets, tuples)
 
         return collector
 
+    def extract_relevant_locals(locals_dict):
+        result = {}
+        for key, value in locals_dict.items():
+            if key.startswith("__"):
+                continue  # skip dunder
+            if isinstance(value, (type(inspect), type(os))):  # skip modules
+                continue
+            if callable(value):
+                continue  # skip functions and classes
+            try:
+                repr(value)
+            except Exception:
+                continue  # skip unrepr-able objects
+            result[key] = value
+        return result
+
 
 Treebeard.register(Log._handle_exception,
                    Log._handle_threading_exception, Log._handle_async_exception)
+
+
+def mask_pw(match):
+    return f"{match.group('db')}://{match.group('user')}:*****@{match.group('host')}:{match.group('port')}"

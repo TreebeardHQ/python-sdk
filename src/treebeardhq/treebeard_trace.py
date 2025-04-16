@@ -1,7 +1,7 @@
 from functools import wraps
 from typing import Callable, Any, List, Optional
 
-from .log import Log
+from .log import Log, fallback_logger
 from .context import LoggingContext
 
 
@@ -32,8 +32,10 @@ def treebeard_trace(name: Optional[str] = None):
                 Log.complete_error(error=e)
                 raise  # re-raises the same exception, with full traceback
             finally:
-                LoggingContext.clear()
-
+                try:
+                    LoggingContext.clear()
+                except Exception as e:
+                    fallback_logger.error("Error in Log.clear", error=e)
         return wrapper
 
     return decorator

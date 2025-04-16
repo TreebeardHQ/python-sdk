@@ -15,7 +15,12 @@ class TreebeardFlask:
 
     @staticmethod
     def _get_request():
-        return importlib.import_module("flask").request
+        try:
+            return importlib.import_module("flask").request
+        except Exception as e:
+            fallback_logger.error(
+                "Error in TreebeardFlask._get_request", error=e)
+            return None
 
     @staticmethod
     def instrument(app) -> None:
@@ -25,54 +30,75 @@ class TreebeardFlask:
             app: The Flask application to instrument
         """
 
+        if not app:
+            fallback_logger.error("TreebeardFlask: No app provided")
+            return
+
         if getattr(app, "_treebeard_instrumented", False):
             return
 
-        fallback_logger.info("TreebeardFlask: Instrumenting Flask application")
+        try:
+            fallback_logger.info(
+                "TreebeardFlask: Instrumenting Flask application")
 
-        @app.before_request
-        def start_trace():
-            """Start a new trace when a request starts."""
-            request = TreebeardFlask._get_request()
-            # Get the route pattern (e.g., '/user/<id>' instead of '/user/123')
-            if request.url_rule:
-                route_pattern = request.url_rule.rule
-            else:
-                route_pattern = f"[unmatched] {request.path}"
-            # Create a name in the format "METHOD /path/pattern"
-            trace_name = f"{request.method} {route_pattern}"
+            @app.before_request
+            def start_trace():
+                """Start a new trace when a request starts."""
+                try:
 
-            request_data = {
-                "remote_addr": request.remote_addr,
-                "referrer": request.referrer,
-                "user_agent": request.user_agent.string,
-                "user_agent_platform": request.user_agent.platform,
-                "user_agent_browser": request.user_agent.browser,
-                "user_agent_version": request.user_agent.version,
-                "user_agent_language": request.user_agent.language,
-            }
+                    request = TreebeardFlask._get_request()
+                    # Get the route pattern (e.g., '/user/<id>' instead of '/user/123')
+                    if request.url_rule:
+                        route_pattern = request.url_rule.rule
+                    else:
+                        route_pattern = f"[unmatched] {request.path}"
+                    # Create a name in the format "METHOD /path/pattern"
+                    trace_name = f"{request.method} {route_pattern}"
 
-            # headers
-            request_data["header_referer"] = request.headers.get(
-                "Referer")  # often spelled like this
-            request_data["header_x_forwarded_for"] = request.headers.get(
-                "X-Forwarded-For")
-            request_data["header_x_real_ip"] = request.headers.get("X-Real-IP")
+                    request_data = {
+                        "remote_addr": request.remote_addr,
+                        "referrer": request.referrer,
+                        "user_agent": request.user_agent.string,
+                        "user_agent_platform": request.user_agent.platform,
+                        "user_agent_browser": request.user_agent.browser,
+                        "user_agent_version": request.user_agent.version,
+                        "user_agent_language": request.user_agent.language,
+                    }
 
-            for key, value in request.args.to_dict(flat=True).items():
-                request_data[f"query_param_{key}"] = value
+                    # headers
+                    request_data["header_referer"] = request.headers.get(
+                        "Referer")  # often spelled like this
+                    request_data["header_x_forwarded_for"] = request.headers.get(
+                        "X-Forwarded-For")
+                    request_data["header_x_real_ip"] = request.headers.get(
+                        "X-Real-IP")
 
-            if request.method in ['POST', 'PUT', 'PATCH']:
-                request_data["body_json"] = request.get_json(silent=True) or {}
+                    for key, value in request.args.to_dict(flat=True).items():
+                        request_data[f"query_param_{key}"] = value
 
-            Log.start(name=trace_name, **request_data)
+                    if request.method in ['POST', 'PUT', 'PATCH']:
+                        request_data["body_json"] = request.get_json(
+                            silent=True) or {}
 
-        @app.teardown_request
-        def clear_context(exc):
-            """Clear the logging context when a request ends."""
-            if exc:
-                Log.complete_error(error=exc)
-            else:
-                Log.complete_success()
+                    Log.start(name=trace_name, **request_data)
+                except Exception as e:
+                    fallback_logger.error(
+                        "Error in TreebeardFlask.start_trace", error=e)
 
-        app._treebeard_instrumented = True
+            @app.teardown_request
+            def clear_context(exc):
+                try:
+                    """Clear the logging context when a request ends."""
+                    if exc:
+                        Log.complete_error(error=exc)
+                    else:
+                        Log.complete_success()
+
+                    app._treebeard_instrumented = True
+                except Exception as e:
+                    fallback_logger.error(
+                        "Error in TreebeardFlask.clear_context", error=e)
+
+        except Exception as e:
+            fallback_logger.error(
+                "Error in TreebeardFlask.instrument", error=e)
