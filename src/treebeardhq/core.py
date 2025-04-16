@@ -137,6 +137,18 @@ class Treebeard:
 
     @classmethod
     def init(cls, **kwargs: Any) -> None:
+        """
+        Initialize the Treebeard class.
+
+         Keyword Args:
+            api_key: The API key for the Treebeard project.
+            endpoint: The endpoint for the Treebeard project.
+            batch_size: The batch size for the Treebeard project.
+            batch_age: The batch age for the Treebeard project.
+            log_to_stdout: Whether to log to stdout for the Treebeard project.
+            debug_mode: Whether to run in debug mode for the Treebeard project.
+            project_name: The project name for the Treebeard project. This is used to identify the project on the backend, so please be careful when changing it.
+        """
         cls(**kwargs)  # Triggers __new__ and __init__
 
     @property

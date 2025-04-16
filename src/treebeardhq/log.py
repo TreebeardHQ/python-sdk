@@ -26,7 +26,7 @@ class Log:
     """Logging utility class for managing trace contexts."""
 
     @staticmethod
-    def start(name: Optional[str] = None) -> str:
+    def start(name: Optional[str] = None, data: Optional[Dict] = None, **kwargs) -> str:
         """Start a new logging context with the given name.
 
         If a context already exists, it will be cleared before creating
@@ -50,7 +50,7 @@ class Log:
         if name:
             LoggingContext.set(TRACE_NAME_KEY, name)
 
-        Log.info(TRACE_START_MARKER)
+        Log.info(TRACE_START_MARKER, data, **kwargs)
 
         return trace_id
 

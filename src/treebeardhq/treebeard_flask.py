@@ -41,7 +41,31 @@ class TreebeardFlask:
                 route_pattern = f"[unmatched] {request.path}"
             # Create a name in the format "METHOD /path/pattern"
             trace_name = f"{request.method} {route_pattern}"
-            Log.start(name=trace_name)
+
+            request_data = {
+                "remote_addr": request.remote_addr,
+                "referrer": request.referrer,
+                "user_agent": request.user_agent.string,
+                "user_agent_platform": request.user_agent.platform,
+                "user_agent_browser": request.user_agent.browser,
+                "user_agent_version": request.user_agent.version,
+                "user_agent_language": request.user_agent.language,
+            }
+
+            # headers
+            request_data["header_referer"] = request.headers.get(
+                "Referer")  # often spelled like this
+            request_data["header_x_forwarded_for"] = request.headers.get(
+                "X-Forwarded-For")
+            request_data["header_x_real_ip"] = request.headers.get("X-Real-IP")
+
+            for key, value in request.args.to_dict(flat=True).items():
+                request_data[f"query_param_{key}"] = value
+
+            if request.method in ['POST', 'PUT', 'PATCH']:
+                request_data["body_json"] = request.get_json(silent=True) or {}
+
+            Log.start(name=trace_name, **request_data)
 
         @app.teardown_request
         def clear_context(exc):
