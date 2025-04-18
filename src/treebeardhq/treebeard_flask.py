@@ -5,9 +5,10 @@ This module provides Flask integration to automatically clear context variables
 when a request ends.
 """
 import importlib
+import traceback
 from treebeardhq.log import Log
 from .context import LoggingContext
-from .internal_utils.fallback_logger import fallback_logger
+from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 
 
 class TreebeardFlask:
@@ -18,8 +19,8 @@ class TreebeardFlask:
         try:
             return importlib.import_module("flask").request
         except Exception as e:
-            fallback_logger.error(
-                "Error in TreebeardFlask._get_request", error=e)
+            sdk_logger.error(
+                f"Error in TreebeardFlask._get_request : {str(e)}: {traceback.format_exc()}")
             return None
 
     @staticmethod
@@ -31,14 +32,14 @@ class TreebeardFlask:
         """
 
         if not app:
-            fallback_logger.error("TreebeardFlask: No app provided")
+            sdk_logger.error("TreebeardFlask: No app provided")
             return
 
         if getattr(app, "_treebeard_instrumented", False):
             return
 
         try:
-            fallback_logger.info(
+            sdk_logger.info(
                 "TreebeardFlask: Instrumenting Flask application")
 
             @app.before_request
@@ -82,8 +83,8 @@ class TreebeardFlask:
 
                     Log.start(name=trace_name, **request_data)
                 except Exception as e:
-                    fallback_logger.error(
-                        "Error in TreebeardFlask.start_trace", error=e)
+                    sdk_logger.error(
+                        f"Error in TreebeardFlask.start_trace : {str(e)}: {traceback.format_exc()}")
 
             @app.teardown_request
             def clear_context(exc):
@@ -96,9 +97,9 @@ class TreebeardFlask:
 
                     app._treebeard_instrumented = True
                 except Exception as e:
-                    fallback_logger.error(
-                        "Error in TreebeardFlask.clear_context", error=e)
+                    sdk_logger.error(
+                        f"Error in TreebeardFlask.clear_context : {str(e)}: {traceback.format_exc()}")
 
         except Exception as e:
-            fallback_logger.error(
-                "Error in TreebeardFlask.instrument", error=e)
+            sdk_logger.error(
+                f"Error in TreebeardFlask.instrument : {str(e)}: {traceback.format_exc()}")

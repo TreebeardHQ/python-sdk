@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Type
 
-from .internal_utils.fallback_logger import fallback_logger
+from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 from .core import Treebeard
 from .constants import COMPACT_TRACEBACK_KEY, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY, TRACE_START_MARKER, TRACEBACK_KEY, TRACE_NAME_KEY
@@ -74,7 +74,8 @@ class Log:
 
             return trace_id
         except Exception as e:
-            fallback_logger.error("Error in Log.start", error=e)
+            sdk_logger.error(
+                f"Error in Log.start : {str(e)}: {traceback.format_exc()}")
             return None
 
     @staticmethod
@@ -83,7 +84,8 @@ class Log:
             """End the current logging context by clearing all context data."""
             LoggingContext.clear()
         except Exception as e:
-            fallback_logger.error("Error in Log.end", error=e)
+            sdk_logger.error(
+                f"Error in Log.end : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
     def complete_success() -> None:
@@ -92,7 +94,8 @@ class Log:
             Log.info(TRACE_COMPLETE_SUCCESS_MARKER)
             Log.end()
         except Exception as e:
-            fallback_logger.error("Error in Log.complete_success", error=e)
+            sdk_logger.error(
+                f"Error in Log.complete_success : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
     def complete_error(data: Optional[Dict] = None, **kwargs) -> None:
@@ -101,7 +104,8 @@ class Log:
             Log.error(TRACE_COMPLETE_ERROR_MARKER, data, **kwargs)
             Log.end()
         except Exception as e:
-            fallback_logger.error("Error in Log.complete_error", error=e)
+            sdk_logger.error(
+                f"Error in Log.complete_error : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
     def _prepare_log_data(message: str, data: Optional[Dict] = None, **kwargs) -> Dict[str, Any]:
@@ -187,8 +191,10 @@ class Log:
                             try:
                                 attr_value = getattr(value, attr_name)
                                 if isinstance(attr_value, (int, float, str, bool, type(None))):
+                                    if attr_value is None:
+                                        processed_data[f"{key}_{attr_name}"] = "None"
                                     # Mask password-related keys
-                                    if any(pw_key in attr_name.lower() for pw_key in masked_terms):
+                                    elif any(pw_key in attr_name.lower() for pw_key in masked_terms):
                                         processed_data[f"{key}_{attr_name}"] = '*****'
                                     else:
                                         processed_data[f"{key}_{attr_name}"] = attr_value
@@ -204,7 +210,9 @@ class Log:
 
             return processed_data
         except Exception as e:
-            fallback_logger.error("Error in Log._prepare_log_data", error=e)
+
+            sdk_logger.error(
+                f"Error in Log._prepare_log_data : {str(e)}: {traceback.format_exc()}")
             return {}
 
     @staticmethod
@@ -221,7 +229,8 @@ class Log:
             log_data[LEVEL_KEY] = 'trace'
             Treebeard().add(log_data)
         except Exception as e:
-            fallback_logger.error("Error in Log.trace", error=e)
+            sdk_logger.error(
+                f"Error in Log.trace : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
     def debug(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -237,7 +246,8 @@ class Log:
             log_data[LEVEL_KEY] = 'debug'
             Treebeard().add(log_data)
         except Exception as e:
-            fallback_logger.error("Error in Log.debug", error=e)
+            sdk_logger.error(
+                f"Error in Log.debug : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
     def info(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -253,7 +263,8 @@ class Log:
             log_data[LEVEL_KEY] = 'info'
             Treebeard().add(log_data)
         except Exception as e:
-            fallback_logger.error("Error in Log.info", error=e)
+            sdk_logger.error(
+                f"Error in Log.info : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
     def warning(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -269,7 +280,8 @@ class Log:
             log_data[LEVEL_KEY] = 'warning'
             Treebeard().add(log_data)
         except Exception as e:
-            fallback_logger.error("Error in Log.warning", error=e)
+            sdk_logger.error(
+                f"Error in Log.warning : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
     def warn(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -283,7 +295,8 @@ class Log:
         try:
             Log.warning(message, data, **kwargs)
         except Exception as e:
-            fallback_logger.error("Error in Log.warn", error=e)
+            sdk_logger.error(
+                f"Error in Log.warn : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
     def error(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -299,7 +312,8 @@ class Log:
             log_data[LEVEL_KEY] = 'error'
             Treebeard().add(log_data)
         except Exception as e:
-            fallback_logger.error("Error in Log.error", error=e)
+            sdk_logger.error(
+                f"Error in Log.error : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
     def critical(message: str, data: Optional[Dict] = None, **kwargs) -> None:
@@ -315,7 +329,8 @@ class Log:
             log_data[LEVEL_KEY] = 'critical'
             Treebeard().add(log_data)
         except Exception as e:
-            fallback_logger.error("Error in Log.critical", error=e)
+            sdk_logger.error(
+                f"Error in Log.critical : {str(e)}: {traceback.format_exc()}")
 
     @classmethod
     def _handle_exception(cls, exc_type: Type[BaseException], exc_value: BaseException, exc_traceback: Any) -> None:
@@ -434,7 +449,9 @@ class Log:
             elif isinstance(value, list):
                 collector[f"{full_key}_count"] = len(value)
             elif isinstance(value, (str, int, float, bool, type(None))):
-                if any(pw_key in full_key.lower() for pw_key in masked_terms):
+                if value is None:
+                    collector[full_key] = "None"
+                elif any(pw_key in full_key.lower() for pw_key in masked_terms):
                     collector[full_key] = '*****'
                 elif "url" in full_key.lower():
                     collector[full_key] = pattern.sub(mask_pw, value)

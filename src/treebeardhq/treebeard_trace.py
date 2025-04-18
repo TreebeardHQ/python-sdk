@@ -1,7 +1,8 @@
 from functools import wraps
+import traceback
 from typing import Callable, Any, List, Optional
 
-from .log import Log, fallback_logger
+from .log import Log, sdk_logger
 from .context import LoggingContext
 
 
@@ -35,7 +36,8 @@ def treebeard_trace(name: Optional[str] = None):
                 try:
                     LoggingContext.clear()
                 except Exception as e:
-                    fallback_logger.error("Error in Log.clear", error=e)
+                    sdk_logger.error(
+                        f"Error in Log.clear : {str(e)}: {traceback.format_exc()}")
         return wrapper
 
     return decorator
