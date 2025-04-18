@@ -17,7 +17,7 @@ from termcolor import colored
 from .batch import LogBatch
 import logging
 from .constants import COMPACT_TRACEBACK_KEY, TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, LEVEL_KEY, TRACE_ID_KEY, MESSAGE_KEY, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, FILE_KEY, LINE_KEY, TRACE_NAME_KEY, COMPACT_TRACE_NAME_KEY
-from .internal_utils.fallback_logger import fallback_logger
+from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 
 LEVEL_COLORS = {
@@ -49,7 +49,7 @@ class LogSenderWorker(threading.Thread):
             try:
                 send_fn()
             except Exception as e:
-                fallback_logger.error(
+                sdk_logger.error(
                     f"Unexpected error in log sender: {str(e)}")
             finally:
                 _send_queue.task_done()
@@ -66,7 +66,7 @@ _worker = LogSenderWorker()
 
 
 def _handle_shutdown(sig, frame):
-    fallback_logger.info("Shutdown signal received, stopping log sender...")
+    sdk_logger.info("Shutdown signal received, stopping log sender...")
     _worker.stop()
     _worker.join()
 
@@ -124,16 +124,11 @@ class Treebeard:
         Treebeard._initialized = True
 
         if self._api_key:
-            fallback_logger.info(
+            sdk_logger.info(
                 f"Treebeard initialized with config: {self.__dict__}")
         else:
-            fallback_logger.warning(
+            sdk_logger.warning(
                 "No API key provided - using fallback logger.")
-
-        if self._log_to_stdout:
-            fallback_logger.info(f"log_to_stdout: {self._log_to_stdout}")
-
-        fallback_logger.info(f"LogSenderWorker alive? {_worker.is_alive()}")
 
     @classmethod
     def init(cls, **kwargs: Any) -> None:
@@ -190,17 +185,17 @@ class Treebeard:
                     'TREEBEARD_LOG_TO_STDOUT', self._log_to_stdout)
                 if not found_api_key:
                     if self._log_to_stdout:
-                        fallback_logger.info(
+                        sdk_logger.info(
                             f"Treebeard initialized with API key: {key} and endpoint: {self._endpoint}.")
                     else:
-                        fallback_logger.info(
+                        sdk_logger.info(
                             f"Treebeard initialized with API key: {key} and endpoint: {self._endpoint}. Terminating logs to stdout. If you would like to output logs to a file, add log_to_stdout=True to your config.")
 
                     found_api_key = True
 
         if not self._initialized:
             if not has_warned:
-                fallback_logger.warning(
+                sdk_logger.warning(
                     "Treebeard is not initialized - logs will be output to standard Python logger")
                 has_warned = True
             self._log_to_fallback(log_entry)
@@ -212,7 +207,7 @@ class Treebeard:
                 if not _worker.is_alive():
                     _worker = LogSenderWorker()
                     _worker.start()
-                    fallback_logger.info(
+                    sdk_logger.info(
                         "Treebeard log worker started post-fork.")
                 Treebeard._worker_started = True
             self.flush()
@@ -317,17 +312,17 @@ class Treebeard:
                     response = requests.post(
                         self._endpoint, headers=headers, data=data)
                     if response.ok:
-                        fallback_logger.info(
+                        sdk_logger.debug(
                             f"Logs sent successfully. logs sent: {len(logs)}")
                         return
                     else:
-                        fallback_logger.warning(
+                        sdk_logger.warning(
                             f"Attempt {attempt+1} failed: {response.status_code} - {response.text}")
                 except Exception as e:
-                    fallback_logger.warning(
+                    sdk_logger.warning(
                         f"Attempt {attempt+1} error: {str(e)}")
                 time.sleep(delay)
-            fallback_logger.error("All attempts to send logs failed.")
+            sdk_logger.error("All attempts to send logs failed.")
 
         _send_queue.put(send_request)
 
