@@ -25,7 +25,7 @@ def treebeard_trace(name: Optional[str] = None):
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
             try:
-                Log.start(name=name)
+                Log.start(name=name, data={"args": args}, **kwargs)
                 result = func(*args, **kwargs)
                 Log.complete_success()
                 return result

@@ -14,14 +14,48 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Type
 
+
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import COMPACT_TRACEBACK_KEY, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY, MESSAGE_KEY, LEVEL_KEY, FILE_KEY, LINE_KEY, TRACE_START_MARKER, TRACEBACK_KEY, TRACE_NAME_KEY
+from .constants import COMPACT_TRACEBACK_KEY, FILE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2
 
 import logging
 
 dev_logger = logging.getLogger("dev")
+
+
+# class GlobalStHandler(logging.Handler):
+#     def emit(self, record):
+#         log_entry = self.format(record)
+#         print(f"Global log: {log_entry} line: {record.lineno}")
+#         print(f"Global log: {log_entry} func: {record.funcName}")
+#         print(f"Global log: {log_entry} file: {record.filename}")
+#         print(f"Global log: {log_entry} level: {record.levelname}")
+#         print(f"Global log: {log_entry} message: {record.getMessage()}")
+#         print(f"Global log: {log_entry} args: {record.args}")
+#         print(f"Global log: {log_entry} exc_info: {record.exc_info}")
+#         print(f"Global log: {log_entry} exc_text: {record.exc_text}")
+#         print(f"Global log: {log_entry} stack_info: {record.stack_info}")
+#         print(f"Global log: {log_entry} process: {record.process}")
+#         print(f"Global log: {log_entry} thread: {record.thread}")
+#         print(f"Global log: {log_entry} name: {record.name}")
+#         print(f"Global log: {log_entry} module: {record.module}")
+#         print(f"Global log: {log_entry} msecs: {record.msecs}")
+#         print(f"Global log: {log_entry} msg: {record.msg}")
+#         print(f"Global log: {log_entry} pathname: {record.pathname}")
+#         print(f"Global log: {log_entry} processName: {record.processName}")
+#         print(
+#             f"Global log: {log_entry} relativeCreated: {record.relativeCreated}")
+#         print(f"Global log: {log_entry} threadName: {record.threadName}")
+
+
+# # Attach to root logger
+# handler = GlobalHandler()
+# handler.setFormatter(logging.Formatter('%(levelname)s:%(name)s:%(message)s'))
+# logging.getLogger().addHandler(handler)
+# logging.getLogger().setLevel(logging.DEBUG)  # Capture all levels
+
 
 masked_terms = {
     'password', 'pass', 'pw', 'secret', 'api_key', 'access_token', 'refresh_token',
@@ -65,10 +99,10 @@ class Log:
             trace_id = f"T{uuid.uuid4().hex}"
 
             # Set up new context
-            LoggingContext.set(TRACE_ID_KEY, trace_id)
+            LoggingContext.set(TRACE_ID_KEY_RESERVED_V2, trace_id)
 
             if name:
-                LoggingContext.set(TRACE_NAME_KEY, name)
+                LoggingContext.set(TRACE_NAME_KEY_RESERVED_V2, name)
 
             Log.info(TRACE_START_MARKER, data, **kwargs)
 
@@ -139,12 +173,12 @@ class Log:
             log_data = LoggingContext.get_all()
 
             # Add the message
-            log_data[MESSAGE_KEY] = message
+            log_data[MESSAGE_KEY_RESERVED_V2] = message
             log_data['f_locals'] = locals_dict
 
-            if not log_data.get(TRACE_ID_KEY):
+            if not log_data.get(TRACE_ID_KEY_RESERVED_V2):
                 trace_id = Log.start()
-                log_data[TRACE_ID_KEY] = trace_id
+                log_data[TRACE_ID_KEY_RESERVED_V2] = trace_id
 
             # Merge explicit data dict if provided
             if data is not None:
@@ -156,8 +190,8 @@ class Log:
 
             # Create a new dictionary to avoid modifying in place
             processed_data = {}
-            processed_data[FILE_KEY] = filename
-            processed_data[LINE_KEY] = line_number
+            processed_data[FILE_KEY_RESERVED_V2] = filename
+            processed_data[LINE_KEY_RESERVED_V2] = line_number
 
             for key, value in log_data.items():
 
@@ -166,17 +200,17 @@ class Log:
 
                 if isinstance(value, Exception):
                     if value.__traceback__ is not None:
-                        processed_data[TRACEBACK_KEY] = '\n'.join(traceback.format_exception(
+                        processed_data[TRACEBACK_KEY_RESERVED_V2] = '\n'.join(traceback.format_exception(
                             type(value), value, value.__traceback__))
                         tb = value.__traceback__
                         while tb.tb_next:  # walk to the last frame
                             tb = tb.tb_next
 
-                        processed_data[FILE_KEY] = tb.tb_frame.f_code.co_filename
-                        processed_data[LINE_KEY] = tb.tb_lineno
+                        processed_data[FILE_KEY_RESERVED_V2] = tb.tb_frame.f_code.co_filename
+                        processed_data[LINE_KEY_RESERVED_V2] = tb.tb_lineno
 
                     else:
-                        processed_data[TRACEBACK_KEY] = str(value)
+                        processed_data[TRACEBACK_KEY_RESERVED_V2] = str(value)
 
                 # Handle datetime objects
                 elif isinstance(value, datetime):
@@ -216,23 +250,6 @@ class Log:
             return {}
 
     @staticmethod
-    def trace(message: str, data: Optional[Dict] = None, **kwargs) -> None:
-        """Log a trace message.
-
-        Args:
-            message: The log message
-            data: Optional dictionary of metadata
-            **kwargs: Additional metadata as keyword arguments
-        """
-        try:
-            log_data = Log._prepare_log_data(message, data, **kwargs)
-            log_data[LEVEL_KEY] = 'trace'
-            Treebeard().add(log_data)
-        except Exception as e:
-            sdk_logger.error(
-                f"Error in Log.trace : {str(e)}: {traceback.format_exc()}")
-
-    @staticmethod
     def debug(message: str, data: Optional[Dict] = None, **kwargs) -> None:
         """Log a debug message.
 
@@ -243,7 +260,7 @@ class Log:
         """
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
-            log_data[LEVEL_KEY] = 'debug'
+            log_data[LEVEL_KEY_RESERVED_V2] = 'debug'
             Treebeard().add(log_data)
         except Exception as e:
             sdk_logger.error(
@@ -260,7 +277,7 @@ class Log:
         """
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
-            log_data[LEVEL_KEY] = 'info'
+            log_data[LEVEL_KEY_RESERVED_V2] = 'info'
             Treebeard().add(log_data)
         except Exception as e:
             sdk_logger.error(
@@ -277,7 +294,7 @@ class Log:
         """
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
-            log_data[LEVEL_KEY] = 'warning'
+            log_data[LEVEL_KEY_RESERVED_V2] = 'warning'
             Treebeard().add(log_data)
         except Exception as e:
             sdk_logger.error(
@@ -309,7 +326,7 @@ class Log:
         """
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
-            log_data[LEVEL_KEY] = 'error'
+            log_data[LEVEL_KEY_RESERVED_V2] = 'error'
             Treebeard().add(log_data)
         except Exception as e:
             sdk_logger.error(
@@ -326,7 +343,7 @@ class Log:
         """
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
-            log_data[LEVEL_KEY] = 'critical'
+            log_data[LEVEL_KEY_RESERVED_V2] = 'critical'
             Treebeard().add(log_data)
         except Exception as e:
             sdk_logger.error(
@@ -482,3 +499,6 @@ Treebeard.register(Log._handle_exception,
 
 def mask_pw(match):
     return f"{match.group('db')}://{match.group('user')}:*****@{match.group('host')}:{match.group('port')}"
+
+
+# print overides

@@ -1,14 +1,22 @@
 from typing import TypedDict, Optional, Dict, Any
 
-TRACE_ID_KEY = "trace_id"
-MESSAGE_KEY = "message"
-LEVEL_KEY = "level"
+
+# global reserved keys
 ERROR_KEY = "error"
 TS_KEY = "ts"
-FILE_KEY = "file"
-LINE_KEY = "line"
-TRACEBACK_KEY = "traceback"
-TRACE_NAME_KEY = "tb_trace_name"
+
+
+# v2 reserved keys
+TRACE_ID_KEY_RESERVED_V2 = "tb_rv2_trace_id"
+MESSAGE_KEY_RESERVED_V2 = "tb_rv2_message"
+LEVEL_KEY_RESERVED_V2 = "tb_rv2_level"
+ERROR_KEY_RESERVED_V2 = "tb_rv2_error"
+TS_KEY_RESERVED_V2 = "tb_rv2_ts"
+FILE_KEY_RESERVED_V2 = "tb_rv2_file"
+LINE_KEY_RESERVED_V2 = "tb_rv2_line"
+TRACEBACK_KEY_RESERVED_V2 = "tb_rv2_traceback"
+TRACE_NAME_KEY_RESERVED_V2 = "tb_rv2_trace_name"
+SOURCE_KEY_RESERVED_V2 = "tb_rv2_source"
 
 
 COMPACT_TRACE_ID_KEY = "tid"
@@ -19,6 +27,7 @@ COMPACT_FILE_KEY = "fl"
 COMPACT_LINE_KEY = "ln"
 COMPACT_TRACEBACK_KEY = "tb"
 COMPACT_TRACE_NAME_KEY = "tn"
+COMPACT_SOURCE_KEY = "src"
 
 
 # Trace markers
@@ -32,5 +41,9 @@ class LogEntry(TypedDict, total=False):
     lvl: str
     tid: str
     msg: str
+    fl: str
+    ln: int
+    tb: str
+    src: str
     ts: Optional[float]
     props: Optional[Dict[str, Any]]

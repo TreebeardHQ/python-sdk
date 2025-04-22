@@ -16,7 +16,7 @@ from termcolor import colored
 
 from .batch import LogBatch
 import logging
-from .constants import COMPACT_TRACEBACK_KEY, TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, LEVEL_KEY, TRACE_ID_KEY, MESSAGE_KEY, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, FILE_KEY, LINE_KEY, TRACE_NAME_KEY, COMPACT_TRACE_NAME_KEY
+from .constants import COMPACT_TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, COMPACT_TRACE_NAME_KEY, TRACE_ID_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, FILE_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, TRACEBACK_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 
@@ -220,29 +220,33 @@ class Treebeard:
         log_entry = log_entry.copy()
         result[COMPACT_TS_KEY] = log_entry.pop(
             TS_KEY, round(time.time() * 1000))
-        result[COMPACT_TRACE_ID_KEY] = log_entry.pop(TRACE_ID_KEY, '')
-        result[COMPACT_MESSAGE_KEY] = log_entry.pop(MESSAGE_KEY, '')
-        result[COMPACT_LEVEL_KEY] = log_entry.pop(LEVEL_KEY, 'debug')
-        result[COMPACT_FILE_KEY] = log_entry.pop(FILE_KEY, '')
-        result[COMPACT_LINE_KEY] = log_entry.pop(LINE_KEY, '')
-        result[COMPACT_TRACEBACK_KEY] = log_entry.pop(TRACEBACK_KEY, '')
+        result[COMPACT_TRACE_ID_KEY] = log_entry.pop(
+            TRACE_ID_KEY_RESERVED_V2, '')
+        result[COMPACT_MESSAGE_KEY] = log_entry.pop(
+            MESSAGE_KEY_RESERVED_V2, '')
+        result[COMPACT_LEVEL_KEY] = log_entry.pop(
+            LEVEL_KEY_RESERVED_V2, 'debug')
+        result[COMPACT_FILE_KEY] = log_entry.pop(FILE_KEY_RESERVED_V2, '')
+        result[COMPACT_LINE_KEY] = log_entry.pop(LINE_KEY_RESERVED_V2, '')
+        result[COMPACT_TRACEBACK_KEY] = log_entry.pop(
+            TRACEBACK_KEY_RESERVED_V2, '')
 
         if log_entry:
             result['props'] = {**log_entry}
 
         # not sure this is the best way to do this, but that's ok
-        if result.get('props', {}).get(TRACE_NAME_KEY):
+        if result.get('props', {}).get(TRACE_NAME_KEY_RESERVED_V2):
             result['props'][COMPACT_TRACE_NAME_KEY] = result['props'].pop(
-                TRACE_NAME_KEY)
+                TRACE_NAME_KEY_RESERVED_V2)
         return result
 
     def _log_to_fallback(self, log_entry: Dict[str, Any]) -> None:
-        level = log_entry.get('level', 'info')
-        message = log_entry.pop('message', '')
+        level = log_entry.get(LEVEL_KEY_RESERVED_V2, 'info')
+        message = log_entry.pop(MESSAGE_KEY_RESERVED_V2, '')
         error = log_entry.pop('error', None)
-        trace_id = log_entry.pop('trace_id', None)
-        log_entry.pop('file', None)
-        log_entry.pop('line', None)
+        trace_id = log_entry.pop(TRACE_ID_KEY_RESERVED_V2, None)
+        log_entry.pop(FILE_KEY_RESERVED_V2, None)
+        log_entry.pop(LINE_KEY_RESERVED_V2, None)
         ts = log_entry.pop('ts', None)
 
         metadata = {k: v for k, v in log_entry.items() if k != 'level'}
