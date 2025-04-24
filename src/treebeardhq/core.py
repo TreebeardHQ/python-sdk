@@ -104,7 +104,8 @@ class Treebeard:
 
     def __init__(self, api_key: Optional[str] = None, endpoint: Optional[str] = None,
                  batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE,
-                 log_to_stdout: bool = False, debug_mode: bool = False, project_name: Optional[str] = None):
+                 log_to_stdout: bool = False, debug_mode: bool = False, project_name: Optional[str] = None,
+                 capture_stdout: bool = False):
 
         if Treebeard._initialized:
             return
@@ -118,10 +119,18 @@ class Treebeard:
             'TREEBEARD_LOG_TO_STDOUT', False)
         self._debug_mode = os.getenv(
             'TREEBEARD_DEBUG_MODE', debug_mode)
+        self._capture_stdout = capture_stdout if capture_stdout is not None else os.getenv(
+            'TREEBEARD_CAPTURE_STDOUT', False)
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
         self._using_fallback = not bool(self._api_key)
 
         Treebeard._initialized = True
+
+        # Enable stdout capture if requested
+        if self._capture_stdout:
+            # Import here to avoid circular imports
+            from .log import Log
+            Log.enable_stdout_override()
 
         if self._api_key:
             sdk_logger.info(
@@ -143,6 +152,7 @@ class Treebeard:
             log_to_stdout: Whether to log to stdout for the Treebeard project.
             debug_mode: Whether to run in debug mode for the Treebeard project.
             project_name: The project name for the Treebeard project. This is used to identify the project on the backend, so please be careful when changing it.
+            capture_stdout: Whether to capture print statements as info logs. Defaults to False.
         """
         cls(**kwargs)  # Triggers __new__ and __init__
 
@@ -163,6 +173,7 @@ class Treebeard:
             cls._instance._using_fallback = True
             cls._instance._log_to_stdout = False
             cls._instance._debug_mode = False
+            cls._instance._capture_stdout = False
             cls._instance._env = None
             cls._initialized = False
 
@@ -241,25 +252,15 @@ class Treebeard:
         return result
 
     def _log_to_fallback(self, log_entry: Dict[str, Any]) -> None:
-        level = log_entry.get(LEVEL_KEY_RESERVED_V2, 'info')
+        level = log_entry.pop(LEVEL_KEY_RESERVED_V2, 'info')
         message = log_entry.pop(MESSAGE_KEY_RESERVED_V2, '')
         error = log_entry.pop('error', None)
         trace_id = log_entry.pop(TRACE_ID_KEY_RESERVED_V2, None)
-        log_entry.pop(FILE_KEY_RESERVED_V2, None)
-        log_entry.pop(LINE_KEY_RESERVED_V2, None)
+        file_path = log_entry.pop(FILE_KEY_RESERVED_V2, None)
+        line_num = log_entry.pop(LINE_KEY_RESERVED_V2, None)
         ts = log_entry.pop('ts', None)
 
         metadata = {k: v for k, v in log_entry.items() if k != 'level'}
-
-        metadata_str = ''
-        if metadata:
-            formatted_metadata = self.dict_to_yaml_like(metadata)
-            metadata_str = f"{colored(formatted_metadata, 'dark_grey')}"
-
-        color = LEVEL_COLORS.get(level, 'white')
-        formatted_message = colored(f"[{trace_id}] {message}", color)
-        full_message = formatted_message + \
-            ('\n' + metadata_str if metadata_str else '')
 
         level_map = {
             'trace': logging.DEBUG,
@@ -271,7 +272,33 @@ class Treebeard:
         }
         log_level = level_map.get(level, logging.INFO)
 
-        fallback_logger.log(log_level, full_message)
+        # Use pretty format for development environment
+        if self._env == "development" or self._debug_mode:
+            metadata_str = ''
+            if metadata:
+                formatted_metadata = self.dict_to_yaml_like(metadata)
+                metadata_str = f"{colored(formatted_metadata, 'dark_grey')}"
+
+            color = LEVEL_COLORS.get(level, 'white')
+            formatted_message = colored(f"[{trace_id}] {message}", color)
+            full_message = formatted_message + \
+                ('\n' + metadata_str if metadata_str else '')
+
+            fallback_logger.log(log_level, full_message)
+        else:
+            # Single line format for production (better for CloudWatch, etc.)
+            timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+            log_info = f"[{trace_id}] {message}"
+
+            if file_path and line_num:
+                log_info += f" ({os.path.basename(file_path)}:{line_num})"
+
+            if metadata:
+                # Convert metadata to JSON string to ensure it's a single line
+                json_metadata = json.dumps(metadata)
+                log_info += f" -- attributes: {json_metadata}"
+
+            fallback_logger.log(log_level, log_info)
 
         if error and isinstance(error, Exception) and error.__traceback__:
             trace = ''.join(traceback.format_exception(

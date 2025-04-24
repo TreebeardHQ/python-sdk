@@ -81,7 +81,7 @@ class TreebeardFlask:
                         request_data["body_json"] = request.get_json(
                             silent=True) or {}
 
-                    Log.start(name=trace_name, **request_data)
+                    Log.start(name=trace_name, request_data=request_data)
                 except Exception as e:
                     sdk_logger.error(
                         f"Error in TreebeardFlask.start_trace : {str(e)}: {traceback.format_exc()}")

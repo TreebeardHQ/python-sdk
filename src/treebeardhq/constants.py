@@ -35,6 +35,8 @@ TRACE_START_MARKER = "tb_trace_start"
 TRACE_COMPLETE_SUCCESS_MARKER = "tb_trace_complete_success"
 TRACE_COMPLETE_ERROR_MARKER = "tb_trace_complete_error"
 
+TAGS_KEY = "tb_i_tags"
+
 
 class LogEntry(TypedDict, total=False):
     """A typed dictionary representing a log entry."""

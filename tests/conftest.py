@@ -12,7 +12,7 @@ sys.path.insert(0, src_path)
 path_updated = True
 
 if path_updated:
-    from treebeard.context import LoggingContext
+    from treebeardhq.context import LoggingContext
 
 
 @pytest.fixture(autouse=True)

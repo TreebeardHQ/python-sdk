@@ -27,7 +27,7 @@ def treebeard_trace(name: Optional[str] = None):
             try:
                 Log.start(name=name, data={"args": args}, **kwargs)
                 result = func(*args, **kwargs)
-                Log.complete_success()
+                Log.complete_success(result=result)
                 return result
             except Exception as e:
                 Log.complete_error(error=e)

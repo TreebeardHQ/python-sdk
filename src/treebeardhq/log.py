@@ -8,17 +8,18 @@ import asyncio
 import inspect
 import os
 import re
+import sys
 import threading
 import traceback
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Type
+from typing import List, Optional, Dict, Any, Type, TextIO, Callable
 
 
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import COMPACT_TRACEBACK_KEY, FILE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2
+from .constants import COMPACT_TRACEBACK_KEY, FILE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY
 
 import logging
 
@@ -76,7 +77,7 @@ pattern = re.compile(
 
 
 class Log:
-    """Logging utility class for managing trace contexts."""
+    """Logging utility class for managing trace contexts and stdout override."""
 
     @staticmethod
     def start(name: Optional[str] = None, data: Optional[Dict] = None, **kwargs) -> str:
@@ -104,7 +105,21 @@ class Log:
             if name:
                 LoggingContext.set(TRACE_NAME_KEY_RESERVED_V2, name)
 
-            Log.info(TRACE_START_MARKER, data, **kwargs)
+            if data:
+                data.update({
+                    TAGS_KEY: {
+                        TRACE_START_MARKER: True
+                    },
+                    'trace_name': name
+                })
+            else:
+                data = {
+                    TAGS_KEY: {
+                        TRACE_START_MARKER: True
+                    },
+                    'trace_name': name
+                }
+            Log.info("Beginning {trace_name}", data, **kwargs)
 
             return trace_id
         except Exception as e:
@@ -122,10 +137,25 @@ class Log:
                 f"Error in Log.end : {str(e)}: {traceback.format_exc()}")
 
     @staticmethod
-    def complete_success() -> None:
+    def complete_success(data: Optional[Dict] = None, **kwargs) -> None:
         """Mark the completion of a successful trace."""
         try:
-            Log.info(TRACE_COMPLETE_SUCCESS_MARKER)
+            name = LoggingContext.get(TRACE_NAME_KEY_RESERVED_V2)
+            if data:
+                data.update({
+                    TAGS_KEY: {
+                        TRACE_COMPLETE_SUCCESS_MARKER: True
+                    },
+                    'trace_name': name
+                })
+            else:
+                data = {
+                    TAGS_KEY: {
+                        TRACE_COMPLETE_SUCCESS_MARKER: True
+                    },
+                    'trace_name': name
+                }
+            Log.info("Completed {trace_name}", data, **kwargs)
             Log.end()
         except Exception as e:
             sdk_logger.error(
@@ -135,7 +165,22 @@ class Log:
     def complete_error(data: Optional[Dict] = None, **kwargs) -> None:
         """Mark the completion of an error trace."""
         try:
-            Log.error(TRACE_COMPLETE_ERROR_MARKER, data, **kwargs)
+            name = LoggingContext.get(TRACE_NAME_KEY_RESERVED_V2)
+            if data:
+                data.update({
+                    TAGS_KEY: {
+                        TRACE_COMPLETE_ERROR_MARKER: True
+                    },
+                    'trace_name': name
+                })
+            else:
+                data = {
+                    TAGS_KEY: {
+                        TRACE_COMPLETE_ERROR_MARKER: True
+                    },
+                    'trace_name': name
+                }
+            Log.error("Failed {trace_name}", data, **kwargs)
             Log.end()
         except Exception as e:
             sdk_logger.error(
@@ -162,7 +207,7 @@ class Log:
             # don't take a frame from the SDK wrapper
             for frame_info in inspect.stack():
                 frame_file = frame_info.filename
-                if "treebeardhq" not in frame_file:
+                if "treebeardhq" not in frame_file and "<frozen" not in frame_file:
                     filename = frame_file
                     line_number = frame_info.lineno
                     locals_dict = Log.extract_relevant_locals(
@@ -194,10 +239,10 @@ class Log:
             processed_data[LINE_KEY_RESERVED_V2] = line_number
 
             for key, value in log_data.items():
-
                 if value is None:
                     continue
 
+                # Handle exceptions - these get special treatment with traceback extraction
                 if isinstance(value, Exception):
                     if value.__traceback__ is not None:
                         processed_data[TRACEBACK_KEY_RESERVED_V2] = '\n'.join(traceback.format_exception(
@@ -208,43 +253,44 @@ class Log:
 
                         processed_data[FILE_KEY_RESERVED_V2] = tb.tb_frame.f_code.co_filename
                         processed_data[LINE_KEY_RESERVED_V2] = tb.tb_lineno
-
                     else:
                         processed_data[TRACEBACK_KEY_RESERVED_V2] = str(value)
-
-                # Handle datetime objects
+                # Handle datetime objects - convert to timestamp
                 elif isinstance(value, datetime):
                     processed_data[key] = int(value.timestamp())
-                # Handle dictionaries
+                # Handle dictionaries - maintain their nested structure
                 elif isinstance(value, dict):
-                    Log.recurse_and_collect_dict(value, processed_data, key)
-                # Handle objects
+                    processed_data[key] = {}
+                    Log.recurse_and_collect_dict(value, processed_data[key])
+                # Handle complex objects - extract attributes
                 elif isinstance(value, object) and not isinstance(value, (int, float, str, bool, type(None))):
+                    processed_data[key] = {}
                     for attr_name in dir(value):
                         if not attr_name.startswith("_"):
                             try:
                                 attr_value = getattr(value, attr_name)
                                 if isinstance(attr_value, (int, float, str, bool, type(None))):
                                     if attr_value is None:
-                                        processed_data[f"{key}_{attr_name}"] = "None"
+                                        processed_data[key][attr_name] = "None"
                                     # Mask password-related keys
                                     elif any(pw_key in attr_name.lower() for pw_key in masked_terms):
-                                        processed_data[f"{key}_{attr_name}"] = '*****'
+                                        processed_data[key][attr_name] = '*****'
                                     else:
-                                        processed_data[f"{key}_{attr_name}"] = attr_value
+                                        processed_data[key][attr_name] = attr_value
                             except:
                                 continue
-                # Keep all primitive types as is
+                # Handle primitive types
                 else:
                     # Mask password-related keys
                     if any(pw_key in key.lower() for pw_key in masked_terms):
                         processed_data[key] = '*****'
+                    elif isinstance(value, str) and "url" in key.lower():
+                        processed_data[key] = pattern.sub(mask_pw, value)
                     else:
                         processed_data[key] = value
 
             return processed_data
         except Exception as e:
-
             sdk_logger.error(
                 f"Error in Log._prepare_log_data : {str(e)}: {traceback.format_exc()}")
             return {}
@@ -447,32 +493,58 @@ class Log:
     @staticmethod
     def recurse_and_collect_dict(data: dict, collector: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
         """
-        Recursively flattens a nested dictionary into a flat dictionary with keys
-        representing the path to each value using underscores. Lists are stored as their count.
+        Process dictionary values while preserving structure. Handles masking of sensitive values,
+        URL obfuscation, and proper handling of null/None values.
 
         Args:
             data: The dictionary to traverse.
-            collector: The flat dictionary to populate.
-            prefix: The current key prefix for nesting.
+            collector: The dictionary to populate.
+            prefix: The current key prefix for nesting - only used for non-root collection.
 
         Returns:
             The updated collector dictionary.
         """
-        for key, value in data.items():
-            full_key = f"{prefix}_{key}" if prefix else key
-
-            if isinstance(value, dict):
-                Log.recurse_and_collect_dict(value, collector, full_key)
-            elif isinstance(value, list):
-                collector[f"{full_key}_count"] = len(value)
-            elif isinstance(value, (str, int, float, bool, type(None))):
-                if value is None:
-                    collector[full_key] = "None"
-                elif any(pw_key in full_key.lower() for pw_key in masked_terms):
-                    collector[full_key] = '*****'
-                elif "url" in full_key.lower():
-                    collector[full_key] = pattern.sub(mask_pw, value)
-            # Optionally handle other types here (e.g. sets, tuples)
+        # If we're at the root level (no prefix), we're creating a new nested dict
+        if not prefix:
+            for key, value in data.items():
+                # For each key at the root level, process appropriately
+                if isinstance(value, dict):
+                    # Create a nested dictionary for dict values
+                    collector[key] = {}
+                    Log.recurse_and_collect_dict(value, collector[key], key)
+                elif isinstance(value, list):
+                    # Just store the count for lists
+                    collector[f"{key}_count"] = len(value)
+                elif isinstance(value, (str, int, float, bool, type(None))):
+                    # Process primitive values
+                    if value is None:
+                        collector[key] = "None"
+                    elif any(pw_key in key.lower() for pw_key in masked_terms):
+                        collector[key] = '*****'
+                    elif isinstance(value, str) and "url" in key.lower():
+                        collector[key] = pattern.sub(mask_pw, value)
+                    else:
+                        collector[key] = value
+                # Optionally handle other types here (e.g. sets, tuples)
+        else:
+            # We're inside a nested structure, continue adding to the passed collector
+            for key, value in data.items():
+                if isinstance(value, dict):
+                    # Create a nested dictionary for this key
+                    collector[key] = {}
+                    Log.recurse_and_collect_dict(value, collector[key], f"{prefix}_{key}")
+                elif isinstance(value, list):
+                    collector[f"{key}_count"] = len(value)
+                elif isinstance(value, (str, int, float, bool, type(None))):
+                    if value is None:
+                        collector[key] = "None"
+                    elif any(pw_key in key.lower() for pw_key in masked_terms) or any(pw_key in prefix.lower() for pw_key in masked_terms):
+                        collector[key] = '*****'
+                    elif isinstance(value, str) and "url" in key.lower():
+                        collector[key] = pattern.sub(mask_pw, value)
+                    else:
+                        collector[key] = value
+                # Optionally handle other types here
 
         return collector
 
@@ -492,6 +564,33 @@ class Log:
             result[key] = value
         return result
 
+    @staticmethod
+    def enable_stdout_override() -> None:
+        """
+        Enable intercepting of stdout (print statements) and logging them as info logs.
+
+        This will capture all print statements and log them as info logs
+        while still allowing them to be printed to the original stdout.
+        """
+        StdoutOverride.enable()
+
+    @staticmethod
+    def disable_stdout_override() -> None:
+        """
+        Disable intercepting of stdout and restore original behavior.
+        """
+        StdoutOverride.disable()
+
+    @staticmethod
+    def is_stdout_override_enabled() -> bool:
+        """
+        Return whether stdout override is currently enabled.
+
+        Returns:
+            True if stdout override is enabled, False otherwise
+        """
+        return StdoutOverride.is_enabled()
+
 
 Treebeard.register(Log._handle_exception,
                    Log._handle_threading_exception, Log._handle_async_exception)
@@ -501,4 +600,91 @@ def mask_pw(match):
     return f"{match.group('db')}://{match.group('user')}:*****@{match.group('host')}:{match.group('port')}"
 
 
-# print overides
+# print overrides
+class StdoutOverride:
+    """Class to override stdout and log printed messages through Treebeard."""
+
+    _original_stdout: Optional[TextIO] = None
+    _enabled: bool = False
+
+    @classmethod
+    def enable(cls) -> None:
+        """Enable stdout override to capture prints as info logs."""
+        if not cls._enabled:
+            cls._original_stdout = sys.stdout
+            sys.stdout = StdoutWriter(cls._original_stdout)
+            cls._enabled = True
+            sdk_logger.debug("Treebeard stdout override enabled")
+
+    @classmethod
+    def disable(cls) -> None:
+        """Disable stdout override and restore original stdout."""
+        if cls._enabled and cls._original_stdout is not None:
+            sys.stdout = cls._original_stdout
+            cls._original_stdout = None
+            cls._enabled = False
+            sdk_logger.debug("Treebeard stdout override disabled")
+
+    @classmethod
+    def is_enabled(cls) -> bool:
+        """Return whether stdout override is enabled."""
+        return cls._enabled
+
+
+class StdoutWriter:
+    """Custom stdout writer that logs messages through Treebeard."""
+
+    def __init__(self, original_stdout: TextIO):
+        """Initialize with the original stdout to forward output."""
+        self.original_stdout = original_stdout
+
+    def write(self, text: str) -> int:
+        """
+        Write text to both the original stdout and log as info.
+
+        Args:
+            text: The text to write
+
+        Returns:
+            Number of characters written
+        """
+        try:
+            # Only log non-empty, non-whitespace strings
+            if text and not text.isspace():
+                # Strip whitespace to clean up the log
+                clean_text = text.rstrip()
+                if clean_text:
+                    # Find caller information outside the Treebeard module
+                    caller_info = self._get_caller_info()
+                    # Log the printed text as info
+                    Log.info(clean_text,
+                             source_file=caller_info.get('file'),
+                             source_line=caller_info.get('line'),
+                             source_func=caller_info.get('func'))
+        except Exception as e:
+            # Ensure we don't break stdout functionality if logging fails
+            sdk_logger.error(f"Error in stdout override: {str(e)}")
+
+        # Always write to the original stdout
+        return self.original_stdout.write(text)
+
+    def flush(self) -> None:
+        """Flush the original stdout."""
+        self.original_stdout.flush()
+
+    def _get_caller_info(self) -> Dict[str, Any]:
+        """Get information about the caller of the print statement."""
+        result = {'file': None, 'line': None, 'func': None}
+        try:
+            for frame_info in inspect.stack():
+                frame_file = frame_info.filename
+                # Skip frames from this module or from the Python standard library
+                if "treebeardhq" not in frame_file and "<frozen" not in frame_file:
+                    result['file'] = frame_file
+                    result['line'] = frame_info.lineno
+                    result['func'] = frame_info.function
+                    break
+        except Exception:
+            # Don't break logging if we can't get frame info
+            pass
+        return result
