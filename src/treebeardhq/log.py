@@ -226,8 +226,10 @@ class Log:
                 log_data[TRACE_ID_KEY_RESERVED_V2] = trace_id
 
             # Merge explicit data dict if provided
-            if data is not None:
+            if data is not None and isinstance(data, dict):
                 log_data.update(data)
+            elif data is not None:
+                log_data.update({'data': data})
 
             # Merge kwargs
             if kwargs:
@@ -532,7 +534,8 @@ class Log:
                 if isinstance(value, dict):
                     # Create a nested dictionary for this key
                     collector[key] = {}
-                    Log.recurse_and_collect_dict(value, collector[key], f"{prefix}_{key}")
+                    Log.recurse_and_collect_dict(
+                        value, collector[key], f"{prefix}_{key}")
                 elif isinstance(value, list):
                     collector[f"{key}_count"] = len(value)
                 elif isinstance(value, (str, int, float, bool, type(None))):
@@ -655,12 +658,8 @@ class StdoutWriter:
                 clean_text = text.rstrip()
                 if clean_text:
                     # Find caller information outside the Treebeard module
-                    caller_info = self._get_caller_info()
                     # Log the printed text as info
-                    Log.info(clean_text,
-                             source_file=caller_info.get('file'),
-                             source_line=caller_info.get('line'),
-                             source_func=caller_info.get('func'))
+                    Log.info(clean_text)
         except Exception as e:
             # Ensure we don't break stdout functionality if logging fails
             sdk_logger.error(f"Error in stdout override: {str(e)}")
@@ -671,20 +670,3 @@ class StdoutWriter:
     def flush(self) -> None:
         """Flush the original stdout."""
         self.original_stdout.flush()
-
-    def _get_caller_info(self) -> Dict[str, Any]:
-        """Get information about the caller of the print statement."""
-        result = {'file': None, 'line': None, 'func': None}
-        try:
-            for frame_info in inspect.stack():
-                frame_file = frame_info.filename
-                # Skip frames from this module or from the Python standard library
-                if "treebeardhq" not in frame_file and "<frozen" not in frame_file:
-                    result['file'] = frame_file
-                    result['line'] = frame_info.lineno
-                    result['func'] = frame_info.function
-                    break
-        except Exception:
-            # Don't break logging if we can't get frame info
-            pass
-        return result

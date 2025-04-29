@@ -12,7 +12,7 @@ if not fallback_logger.handlers:
     handler.setFormatter(formatter)
     fallback_logger.addHandler(handler)
 
-fallback_logger.setLevel(logging.DEBUG)
+fallback_logger.setLevel(logging.INFO)
 
 
 sdk_logger = logging.getLogger('treebeard.sdk')
@@ -22,3 +22,5 @@ if not sdk_logger.handlers:
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)-7s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     handler.setFormatter(formatter)
+
+sdk_logger.setLevel(logging.INFO)

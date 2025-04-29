@@ -95,6 +95,8 @@ class Treebeard:
     _original_loop_exception_handler: Optional[Any] = None
     _project_name: Optional[str] = None
 
+    _config_version: Optional[int] = None
+
     _initialized = False
 
     def __new__(cls, *args, **kwargs):
@@ -102,35 +104,61 @@ class Treebeard:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, api_key: Optional[str] = None, endpoint: Optional[str] = None,
-                 batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE,
-                 log_to_stdout: bool = False, debug_mode: bool = False, project_name: Optional[str] = None,
+    def __init__(self, project_name: Optional[str] = None, api_key: Optional[str] = None, endpoint: Optional[str] = None,
+                 batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE, log_to_stdout: bool = False, stdout_log_level: str = 'INFO',
                  capture_stdout: bool = False):
+        """
+        Initialize the Treebeard class.
 
-        if Treebeard._initialized:
-            return
+        Keyword Args:
+            project_name: The project name for the Treebeard project. This is used to identify the project on the backend, so please be careful when changing it.
+            api_key: The API key for the Treebeard project or set TREEBEARD_API_KEY in your environment.
+            endpoint: (optional) The endpoint for the Treebeard project You may also set TREEBEARD_API_URL in your environment or it will use the default production endpoint
+            batch_size: Configure the number of logs sent per batch
+            batch_age: Configure how long to wait in between batches before sending logs regardless of batch size
 
-        self._project_name = project_name
+            log_to_stdout: if true, Treebeard SDK will send everythign to standard out that we also send to out API
+            stdout_log_level: the level to log to stdout. Defaults to INFO. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL, FATAL, NOTSET
+
+            capture_stdout: Whether to capture print statements as info logs. Defaults to False.
+        """
+
+        # accept some of these variables even if we've already initialized automatically
+        if self._project_name is None and project_name is not None:
+            # always accept the project name if it's provided
+            self._project_name = project_name
+
         self._api_key = api_key or os.getenv('TREEBEARD_API_KEY')
         self._endpoint = endpoint or os.getenv(
             'TREEBEARD_API_URL', DEFAULT_API_URL)
-        self._env = os.getenv('ENV', "production")
-        self._log_to_stdout = log_to_stdout if log_to_stdout is not None else os.getenv(
-            'TREEBEARD_LOG_TO_STDOUT', False)
-        self._debug_mode = os.getenv(
-            'TREEBEARD_DEBUG_MODE', debug_mode)
         self._capture_stdout = capture_stdout if capture_stdout is not None else os.getenv(
             'TREEBEARD_CAPTURE_STDOUT', False)
-        self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
-        self._using_fallback = not bool(self._api_key)
+        self._log_to_stdout = log_to_stdout if log_to_stdout is not None else os.getenv(
+            'TREEBEARD_LOG_TO_STDOUT', False)
+        self._stdout_log_level = stdout_log_level if stdout_log_level is not None else os.getenv(
+            'TREEBEARD_STDOUT_LOG_LEVEL', 'INFO')
 
-        Treebeard._initialized = True
+        self._env = os.getenv('ENV', "production")
+        self._debug_mode = os.getenv(
+            'TREEBEARD_DEBUG_MODE')
 
         # Enable stdout capture if requested
         if self._capture_stdout:
             # Import here to avoid circular imports
             from .log import Log
             Log.enable_stdout_override()
+
+            if self._stdout_log_level:
+                fallback_logger.setLevel(self._stdout_log_level)
+
+        if Treebeard._initialized:
+            return
+
+        Treebeard._initialized = True
+
+        # don't reset some of these if we've already initialized
+        self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
+        self._using_fallback = not bool(self._api_key)
 
         if self._api_key:
             sdk_logger.info(
@@ -144,17 +172,30 @@ class Treebeard:
         """
         Initialize the Treebeard class.
 
-         Keyword Args:
-            api_key: The API key for the Treebeard project.
-            endpoint: The endpoint for the Treebeard project.
-            batch_size: The batch size for the Treebeard project.
-            batch_age: The batch age for the Treebeard project.
-            log_to_stdout: Whether to log to stdout for the Treebeard project.
-            debug_mode: Whether to run in debug mode for the Treebeard project.
-            project_name: The project name for the Treebeard project. This is used to identify the project on the backend, so please be careful when changing it.
-            capture_stdout: Whether to capture print statements as info logs. Defaults to False.
+        @see Treebeard.__init__
         """
         cls(**kwargs)  # Triggers __new__ and __init__
+
+    def update_project_config(self, **kwargs: Any) -> None:
+        """
+        Update the project config.
+        """
+        self._config_version = kwargs.get(
+            'config_version', self._config_version)
+
+        self._log_to_stdout = bool(kwargs.get(
+            'log_to_stdout', self._log_to_stdout))
+        self._stdout_log_level = kwargs.get(
+            'stdout_log_level', self._stdout_log_level)
+        self._capture_stdout = bool(kwargs.get(
+            'capture_stdout', self._capture_stdout))
+
+        if self._stdout_log_level:
+            fallback_logger.setLevel(self._stdout_log_level)
+
+        if self._capture_stdout:
+            from .log import Log
+            Log.enable_stdout_override()
 
     @property
     def api_key(self) -> Optional[str]:
@@ -183,26 +224,26 @@ class Treebeard:
         global _worker
 
         if self._using_fallback:
+            # let's check to see if we've lazy-loaded env vars
             key = os.getenv('TREEBEARD_API_KEY')
             if key:
                 # reset env if we've found a key, just to make sure
-                self._env = os.getenv('ENV', "production")
-                self._endpoint = os.getenv(
-                    'TREEBEARD_API_URL', DEFAULT_API_URL)
                 self._using_fallback = False
+                self._env = os.getenv('ENV', self._env)
+                self._endpoint = os.getenv(
+                    'TREEBEARD_API_URL', self._endpoint)
+
                 self._api_key = key
-                self._initialized = True
                 self._log_to_stdout = os.getenv(
                     'TREEBEARD_LOG_TO_STDOUT', self._log_to_stdout)
-                if not found_api_key:
-                    if self._log_to_stdout:
-                        sdk_logger.info(
-                            f"Treebeard initialized with API key: {key} and endpoint: {self._endpoint}.")
-                    else:
-                        sdk_logger.info(
-                            f"Treebeard initialized with API key: {key} and endpoint: {self._endpoint}. Terminating logs to stdout. If you would like to output logs to a file, add log_to_stdout=True to your config.")
+                self._capture_stdout = os.getenv(
+                    'TREEBEARD_CAPTURE_STDOUT', self._capture_stdout)
 
-                    found_api_key = True
+                self._initialized = True
+
+                if has_warned:
+                    sdk_logger.info(
+                        f"Treebeard lazy-loaded API key: {key} and endpoint: {self._endpoint}.")
 
         if not self._initialized:
             if not has_warned:
@@ -333,7 +374,8 @@ class Treebeard:
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self._api_key}'
         }
-        data = json.dumps({'logs': logs, 'project_name': self._project_name})
+        data = json.dumps(
+            {'logs': logs, 'project_name': self._project_name, "v": self._config_version})
 
         def send_request():
             max_retries = 3
@@ -345,7 +387,16 @@ class Treebeard:
                     if response.ok:
                         sdk_logger.debug(
                             f"Logs sent successfully. logs sent: {len(logs)}")
-                        return
+
+                        result = response.json()
+
+                        # we get an updated config if the server has a later config version than we
+                        # sent it
+                        if isinstance(result, dict) and result.get('updated_config'):
+                            self.update_project_config(
+                                **result.get('updated_config'))
+
+                        return result
                     else:
                         sdk_logger.warning(
                             f"Attempt {attempt+1} failed: {response.status_code} - {response.text}")
