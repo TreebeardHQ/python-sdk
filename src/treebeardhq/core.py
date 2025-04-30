@@ -16,7 +16,7 @@ from termcolor import colored
 
 from .batch import LogBatch
 import logging
-from .constants import COMPACT_TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, COMPACT_TRACE_NAME_KEY, TRACE_ID_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, FILE_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, TRACEBACK_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2
+from .constants import COMPACT_SOURCE_KEY, COMPACT_TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, SOURCE_KEY_RESERVED_V2, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, COMPACT_TRACE_NAME_KEY, TRACE_ID_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, FILE_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, TRACEBACK_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 
@@ -239,6 +239,9 @@ class Treebeard:
                 self._capture_stdout = os.getenv(
                     'TREEBEARD_CAPTURE_STDOUT', self._capture_stdout)
 
+                self._stdout_log_level = os.getenv(
+                    'TREEBEARD_STDOUT_LOG_LEVEL', self._stdout_log_level)
+
                 self._initialized = True
 
                 if has_warned:
@@ -282,6 +285,8 @@ class Treebeard:
         result[COMPACT_LINE_KEY] = log_entry.pop(LINE_KEY_RESERVED_V2, '')
         result[COMPACT_TRACEBACK_KEY] = log_entry.pop(
             TRACEBACK_KEY_RESERVED_V2, '')
+        result[COMPACT_SOURCE_KEY] = log_entry.pop(
+            SOURCE_KEY_RESERVED_V2, 'treebeard')
 
         if log_entry:
             result['props'] = {**log_entry}
@@ -293,6 +298,13 @@ class Treebeard:
         return result
 
     def _log_to_fallback(self, log_entry: Dict[str, Any]) -> None:
+
+        if self._log_to_stdout and log_entry.get(SOURCE_KEY_RESERVED_V2) == "print":
+            # print statements are forwarded to stdout already, so don't print them again
+            # alternatively, we should probably not forward them to stdout, but not sure
+            # what the customer preference is
+            return
+
         level = log_entry.pop(LEVEL_KEY_RESERVED_V2, 'info')
         message = log_entry.pop(MESSAGE_KEY_RESERVED_V2, '')
         error = log_entry.pop('error', None)

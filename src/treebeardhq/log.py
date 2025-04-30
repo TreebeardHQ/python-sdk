@@ -19,7 +19,7 @@ from typing import List, Optional, Dict, Any, Type, TextIO, Callable
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import COMPACT_TRACEBACK_KEY, FILE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY
+from .constants import COMPACT_TRACEBACK_KEY, FILE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY
 
 import logging
 
@@ -239,6 +239,10 @@ class Log:
             processed_data = {}
             processed_data[FILE_KEY_RESERVED_V2] = filename
             processed_data[LINE_KEY_RESERVED_V2] = line_number
+
+            # if we haven't set the source upstream, it's from our SDK
+            if not log_data.get(SOURCE_KEY_RESERVED_V2):
+                log_data[SOURCE_KEY_RESERVED_V2] = "treebeard"
 
             for key, value in log_data.items():
                 if value is None:
@@ -659,7 +663,9 @@ class StdoutWriter:
                 if clean_text:
                     # Find caller information outside the Treebeard module
                     # Log the printed text as info
-                    Log.info(clean_text)
+                    Log.info(clean_text, {
+                        SOURCE_KEY_RESERVED_V2: "print"
+                    })
         except Exception as e:
             # Ensure we don't break stdout functionality if logging fails
             sdk_logger.error(f"Error in stdout override: {str(e)}")
