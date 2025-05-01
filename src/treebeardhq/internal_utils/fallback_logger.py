@@ -22,5 +22,6 @@ if not sdk_logger.handlers:
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)-7s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     handler.setFormatter(formatter)
+    sdk_logger.addHandler(handler)
 
 sdk_logger.setLevel(logging.INFO)

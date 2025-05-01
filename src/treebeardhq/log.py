@@ -202,7 +202,6 @@ class Log:
             filename = None
             line_number = None
             locals_dict = {}
-            frame_info = inspect.stack()
 
             # don't take a frame from the SDK wrapper
             for frame_info in inspect.stack():
@@ -210,8 +209,8 @@ class Log:
                 if "treebeardhq" not in frame_file and "<frozen" not in frame_file:
                     filename = frame_file
                     line_number = frame_info.lineno
-                    locals_dict = Log.extract_relevant_locals(
-                        frame_info.frame.f_locals)
+                    # locals_dict = Log.extract_relevant_locals(
+                    #     frame_info.frame.f_locals)
                     break
 
             # Start with the context data
@@ -219,7 +218,8 @@ class Log:
 
             # Add the message
             log_data[MESSAGE_KEY_RESERVED_V2] = message
-            log_data['f_locals'] = locals_dict
+
+            # log_data['f_locals'] = locals_dict
 
             if not log_data.get(TRACE_ID_KEY_RESERVED_V2):
                 trace_id = Log.start()
@@ -638,6 +638,9 @@ class StdoutOverride:
         return cls._enabled
 
 
+_guard = threading.local()
+
+
 class StdoutWriter:
     """Custom stdout writer that logs messages through Treebeard."""
 
@@ -655,6 +658,11 @@ class StdoutWriter:
         Returns:
             Number of characters written
         """
+        # don't take a frame from the SDK wrapper
+        if getattr(_guard, "busy", False):          # already inside -> just pass through
+            return self.original_stdout.write(text)
+
+        _guard.busy = True
         try:
             # Only log non-empty, non-whitespace strings
             if text and not text.isspace():
@@ -669,6 +677,8 @@ class StdoutWriter:
         except Exception as e:
             # Ensure we don't break stdout functionality if logging fails
             sdk_logger.error(f"Error in stdout override: {str(e)}")
+        finally:
+            _guard.busy = False
 
         # Always write to the original stdout
         return self.original_stdout.write(text)

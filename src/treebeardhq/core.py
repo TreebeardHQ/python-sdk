@@ -66,9 +66,11 @@ _worker = LogSenderWorker()
 
 
 def _handle_shutdown(sig, frame):
-    sdk_logger.info("Shutdown signal received, stopping log sender...")
-    _worker.stop()
-    _worker.join()
+    Treebeard.flush()
+    sdk_logger.info("Shutdown signal received, flushing logs...")
+    if _worker and _worker.is_alive():
+        _worker.stop()
+        _worker.join()
 
 
 signal.signal(signal.SIGINT, _handle_shutdown)
@@ -105,8 +107,8 @@ class Treebeard:
         return cls._instance
 
     def __init__(self, project_name: Optional[str] = None, api_key: Optional[str] = None, endpoint: Optional[str] = None,
-                 batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE, log_to_stdout: bool = False, stdout_log_level: str = 'INFO',
-                 capture_stdout: bool = False):
+                 batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE, log_to_stdout: Optional[bool] = None, stdout_log_level: str = 'INFO',
+                 capture_stdout: Optional[bool] = None):
         """
         Initialize the Treebeard class.
 
@@ -123,6 +125,9 @@ class Treebeard:
             capture_stdout: Whether to capture print statements as info logs. Defaults to False.
         """
 
+        if Treebeard._initialized:
+            return
+
         # accept some of these variables even if we've already initialized automatically
         if self._project_name is None and project_name is not None:
             # always accept the project name if it's provided
@@ -135,6 +140,7 @@ class Treebeard:
             'TREEBEARD_CAPTURE_STDOUT', False)
         self._log_to_stdout = log_to_stdout if log_to_stdout is not None else os.getenv(
             'TREEBEARD_LOG_TO_STDOUT', False)
+
         self._stdout_log_level = stdout_log_level if stdout_log_level is not None else os.getenv(
             'TREEBEARD_STDOUT_LOG_LEVEL', 'INFO')
 
@@ -150,9 +156,6 @@ class Treebeard:
 
             if self._stdout_log_level:
                 fallback_logger.setLevel(self._stdout_log_level)
-
-        if Treebeard._initialized:
-            return
 
         Treebeard._initialized = True
 
@@ -180,6 +183,7 @@ class Treebeard:
         """
         Update the project config.
         """
+
         self._config_version = kwargs.get(
             'config_version', self._config_version)
 
@@ -413,8 +417,7 @@ class Treebeard:
                         sdk_logger.warning(
                             f"Attempt {attempt+1} failed: {response.status_code} - {response.text}")
                 except Exception as e:
-                    sdk_logger.warning(
-                        f"Attempt {attempt+1} error: {str(e)}")
+                    sdk_logger.error("error while sending logs", exc_info=e)
                 time.sleep(delay)
             sdk_logger.error("All attempts to send logs failed.")
 
