@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "treebeardhq"
-version = "0.4.9dev2"
+version = "0.4.9dev4"
 authors = [
     { name = "George Mayer", email = "george@treebeardhq.com" },
 ]
@@ -48,7 +48,7 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "0.4.9dev2"
+python_version = "0.4.9dev4"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

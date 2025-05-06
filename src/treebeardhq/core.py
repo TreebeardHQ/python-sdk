@@ -66,7 +66,7 @@ _worker = LogSenderWorker()
 
 
 def _handle_shutdown(sig, frame):
-    Treebeard.flush()
+    Treebeard().flush()
     sdk_logger.info("Shutdown signal received, flushing logs...")
     if _worker and _worker.is_alive():
         _worker.stop()
