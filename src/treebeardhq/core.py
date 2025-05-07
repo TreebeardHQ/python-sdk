@@ -14,6 +14,8 @@ import json
 from queue import Queue, Empty
 from termcolor import colored
 
+from treebeardhq.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, FlushTimerWorker
+
 from .batch import LogBatch
 import logging
 from .constants import COMPACT_SOURCE_KEY, COMPACT_TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, SOURCE_KEY_RESERVED_V2, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, COMPACT_TRACE_NAME_KEY, TRACE_ID_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, FILE_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, TRACEBACK_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2
@@ -66,11 +68,18 @@ _worker = LogSenderWorker()
 
 
 def _handle_shutdown(sig, frame):
-    Treebeard().flush()
+    curr_time = round(time.time() * 1000)
     sdk_logger.info("Shutdown signal received, flushing logs...")
+    Treebeard().flush()
+
+    if Treebeard._instance and Treebeard._instance._flush_timer:
+        Treebeard._instance._flush_timer.stop()
     if _worker and _worker.is_alive():
         _worker.stop()
-        _worker.join()
+        _worker.join(timeout=10)
+
+    sdk_logger.info(
+        f"Shutdown complete, took {round(time.time() * 1000) - curr_time} ms")
 
 
 signal.signal(signal.SIGINT, _handle_shutdown)
@@ -96,6 +105,8 @@ class Treebeard:
     _original_threading_excepthook: Optional[Any] = None
     _original_loop_exception_handler: Optional[Any] = None
     _project_name: Optional[str] = None
+    _flush_interval: float = None
+    _flush_timer: Optional[FlushTimerWorker] = None
 
     _config_version: Optional[int] = None
 
@@ -108,7 +119,7 @@ class Treebeard:
 
     def __init__(self, project_name: Optional[str] = None, api_key: Optional[str] = None, endpoint: Optional[str] = None,
                  batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE, log_to_stdout: Optional[bool] = None, stdout_log_level: str = 'INFO',
-                 capture_stdout: Optional[bool] = None):
+                 capture_stdout: Optional[bool] = None, flush_interval: float = None):
         """
         Initialize the Treebeard class.
 
@@ -148,6 +159,9 @@ class Treebeard:
         self._debug_mode = os.getenv(
             'TREEBEARD_DEBUG_MODE')
 
+        self._flush_interval = flush_interval if flush_interval is not None else os.getenv(
+            'TREEBEARD_FLUSH_INTERVAL', DEFAULT_FLUSH_INTERVAL)
+
         # Enable stdout capture if requested
         if self._capture_stdout:
             # Import here to avoid circular imports
@@ -162,6 +176,11 @@ class Treebeard:
         # don't reset some of these if we've already initialized
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
         self._using_fallback = not bool(self._api_key)
+
+        if self._flush_timer is None:
+            self._flush_timer = FlushTimerWorker(
+                treebeard_ref=self, interval=self._flush_interval)
+            self._flush_timer.start()
 
         if self._api_key:
             sdk_logger.info(
@@ -382,8 +401,11 @@ class Treebeard:
                 "Treebeard must be initialized before flushing logs")
 
         logs = self._batch.get_logs()
+        count = len(logs)
         if logs:
             self._send_logs(logs)
+
+        return count
 
     def _send_logs(self, logs: List[Any]) -> None:
         headers = {
