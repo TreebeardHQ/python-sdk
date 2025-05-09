@@ -17,6 +17,8 @@ LINE_KEY_RESERVED_V2 = "tb_rv2_line"
 TRACEBACK_KEY_RESERVED_V2 = "tb_rv2_traceback"
 TRACE_NAME_KEY_RESERVED_V2 = "tb_rv2_trace_name"
 SOURCE_KEY_RESERVED_V2 = "tb_rv2_source"
+EXEC_TYPE_RESERVED_V2 = "tb_rv2_exec_type"
+EXEC_VALUE_RESERVED_V2 = "tb_rv2_exec_value"
 
 
 COMPACT_TRACE_ID_KEY = "tid"

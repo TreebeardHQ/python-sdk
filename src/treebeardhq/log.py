@@ -19,7 +19,7 @@ from typing import List, Optional, Dict, Any, Type, TextIO, Callable
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import COMPACT_TRACEBACK_KEY, FILE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY
+from .constants import COMPACT_TRACEBACK_KEY, EXEC_TYPE_RESERVED_V2, EXEC_VALUE_RESERVED_V2, FILE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY
 
 import logging
 
@@ -294,6 +294,14 @@ class Log:
                         processed_data[key] = pattern.sub(mask_pw, value)
                     else:
                         processed_data[key] = value
+
+            if not TRACEBACK_KEY_RESERVED_V2 in processed_data:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                if exc_type and exc_value and exc_traceback:
+                    processed_data[TRACEBACK_KEY_RESERVED_V2] = ''.join(traceback.format_exception(
+                        exc_type, exc_value, exc_traceback))
+                    processed_data[EXEC_TYPE_RESERVED_V2] = exc_type.__name__
+                    processed_data[EXEC_VALUE_RESERVED_V2] = str(exc_value)
 
             return processed_data
         except Exception as e:

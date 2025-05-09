@@ -381,6 +381,13 @@ class Treebeard:
                 type(error), error, error.__traceback__))
             fallback_logger.log(log_level, trace)
 
+        else:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            if exc_traceback and exc_type and exc_value:
+                trace = ''.join(traceback.format_exception(
+                    exc_type, exc_value, exc_traceback))
+                fallback_logger.log(log_level, trace)
+
     def dict_to_yaml_like(self, data: dict) -> str:
         lines = []
         for key, value in data.items():
