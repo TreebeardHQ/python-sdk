@@ -136,13 +136,13 @@ class Treebeard:
             capture_stdout: Whether to capture print statements as info logs. Defaults to False.
         """
 
-        if Treebeard._initialized:
-            return
-
         # accept some of these variables even if we've already initialized automatically
-        if self._project_name is None and project_name is not None:
+        if project_name is not None:
             # always accept the project name if it's provided
             self._project_name = project_name
+
+        if Treebeard._initialized:
+            return
 
         self._api_key = api_key or os.getenv('TREEBEARD_API_KEY')
         self._endpoint = endpoint or os.getenv(
@@ -239,6 +239,7 @@ class Treebeard:
             cls._instance._debug_mode = False
             cls._instance._capture_stdout = False
             cls._instance._env = None
+            cls._instance._project_name = None
             cls._initialized = False
 
     def add(self, log_entry: Dict[str, Any]) -> None:
