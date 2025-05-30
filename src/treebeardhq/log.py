@@ -19,7 +19,7 @@ from typing import List, Optional, Dict, Any, Type, TextIO, Callable
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import COMPACT_TRACEBACK_KEY, EXEC_TYPE_RESERVED_V2, EXEC_VALUE_RESERVED_V2, FILE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY
+from .constants import COMPACT_TRACEBACK_KEY, EXEC_TYPE_RESERVED_V2, EXEC_VALUE_RESERVED_V2, FILE_KEY_RESERVED_V2, FUNCTION_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY
 
 import logging
 
@@ -201,6 +201,7 @@ class Log:
         try:
             filename = None
             line_number = None
+            function_name = None
             locals_dict = {}
 
             # don't take a frame from the SDK wrapper
@@ -209,6 +210,7 @@ class Log:
                 if "treebeardhq" not in frame_file and "<frozen" not in frame_file:
                     filename = frame_file
                     line_number = frame_info.lineno
+                    function_name = frame_info.function
                     # locals_dict = Log.extract_relevant_locals(
                     #     frame_info.frame.f_locals)
                     break
@@ -239,7 +241,7 @@ class Log:
             processed_data = {}
             processed_data[FILE_KEY_RESERVED_V2] = filename
             processed_data[LINE_KEY_RESERVED_V2] = line_number
-
+            processed_data[FUNCTION_KEY_RESERVED_V2] = function_name
             # if we haven't set the source upstream, it's from our SDK
             if not log_data.get(SOURCE_KEY_RESERVED_V2):
                 log_data[SOURCE_KEY_RESERVED_V2] = "treebeard"
@@ -250,17 +252,12 @@ class Log:
 
                 # Handle exceptions - these get special treatment with traceback extraction
                 if isinstance(value, Exception):
+                    processed_data[EXEC_TYPE_RESERVED_V2] = value.__class__.__name__
+                    processed_data[EXEC_VALUE_RESERVED_V2] = str(value)
                     if value.__traceback__ is not None:
                         processed_data[TRACEBACK_KEY_RESERVED_V2] = '\n'.join(traceback.format_exception(
                             type(value), value, value.__traceback__))
-                        tb = value.__traceback__
-                        while tb.tb_next:  # walk to the last frame
-                            tb = tb.tb_next
 
-                        processed_data[FILE_KEY_RESERVED_V2] = tb.tb_frame.f_code.co_filename
-                        processed_data[LINE_KEY_RESERVED_V2] = tb.tb_lineno
-                    else:
-                        processed_data[TRACEBACK_KEY_RESERVED_V2] = str(value)
                 # Handle datetime objects - convert to timestamp
                 elif isinstance(value, datetime):
                     processed_data[key] = int(value.timestamp())
@@ -435,7 +432,7 @@ class Log:
                     exc_type, exc_value, exc_traceback)
 
         except Exception as e:
-            Log.error("Handled exception in SDK", error=e)
+            sdk_logger.error("Handled exception in SDK", error=e)
 
     @classmethod
     def _handle_threading_exception(cls, args: threading.ExceptHookArgs) -> None:
@@ -462,7 +459,7 @@ class Log:
             if Treebeard._original_threading_excepthook is not None:
                 Treebeard._original_threading_excepthook(args)
         except Exception:
-            Log.error("Handled exception in SDK")
+            sdk_logger.error("Handled exception in SDK")
 
     @classmethod
     def _handle_async_exception(cls, loop: asyncio.AbstractEventLoop, context: dict) -> None:
@@ -502,7 +499,7 @@ class Log:
             if Treebeard._original_loop_exception_handler is not None:
                 Treebeard._original_loop_exception_handler(loop, context)
         except Exception:
-            Log.error("Handled exception in SDK")
+            sdk_logger.error("Handled exception in SDK")
 
     @staticmethod
     def recurse_and_collect_dict(data: dict, collector: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:

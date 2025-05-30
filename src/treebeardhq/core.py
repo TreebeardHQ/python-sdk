@@ -18,7 +18,7 @@ from treebeardhq.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, Flush
 
 from .batch import LogBatch
 import logging
-from .constants import COMPACT_SOURCE_KEY, COMPACT_TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, SOURCE_KEY_RESERVED_V2, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, COMPACT_TRACE_NAME_KEY, TRACE_ID_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, FILE_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, TRACEBACK_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2
+from .constants import COMPACT_EXEC_TYPE_KEY, COMPACT_EXEC_VALUE_KEY, COMPACT_FUNCTION_KEY, COMPACT_SOURCE_KEY, COMPACT_TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, EXEC_TYPE_RESERVED_V2, EXEC_VALUE_RESERVED_V2, FUNCTION_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, COMPACT_TRACE_NAME_KEY, TRACE_ID_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, FILE_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, TRACEBACK_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 
@@ -311,6 +311,12 @@ class Treebeard:
             TRACEBACK_KEY_RESERVED_V2, '')
         result[COMPACT_SOURCE_KEY] = log_entry.pop(
             SOURCE_KEY_RESERVED_V2, 'treebeard')
+        result[COMPACT_FUNCTION_KEY] = log_entry.pop(
+            FUNCTION_KEY_RESERVED_V2, '')
+        result[COMPACT_EXEC_TYPE_KEY] = log_entry.pop(
+            EXEC_TYPE_RESERVED_V2, '')
+        result[COMPACT_EXEC_VALUE_KEY] = log_entry.pop(
+            EXEC_VALUE_RESERVED_V2, '')
 
         if log_entry:
             result['props'] = {**log_entry}
@@ -421,7 +427,7 @@ class Treebeard:
             'Authorization': f'Bearer {self._api_key}'
         }
         data = json.dumps(
-            {'logs': logs, 'project_name': self._project_name, "v": self._config_version})
+            {'logs': logs, 'project_name': self._project_name, "v": self._config_version, "sdk_version": 2})
 
         def send_request():
             max_retries = 3
