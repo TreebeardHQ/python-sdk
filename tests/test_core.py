@@ -380,3 +380,214 @@ def test_debug_mode_with_fallback(reset_treebeard, caplog):
 
     assert instance.debug_mode is True
     assert instance._using_fallback is True
+
+
+def test_otel_format_initialization(reset_treebeard):
+    """Test that OpenTelemetry format can be enabled during initialization."""
+    Treebeard.init(
+        api_key="test-key",
+        endpoint="http://test.com", 
+        otel_format=True
+    )
+    instance = Treebeard()
+    
+    assert instance._otel_format is True
+
+
+def test_otel_format_defaults_to_false(reset_treebeard):
+    """Test that OpenTelemetry format defaults to False."""
+    Treebeard.init(api_key="test-key", endpoint="http://test.com")
+    instance = Treebeard()
+    
+    assert instance._otel_format is False
+
+
+def test_otel_format_basic_log(reset_treebeard):
+    """Test basic OpenTelemetry log formatting."""
+    Treebeard.init(
+        api_key="test-key",
+        endpoint="http://test.com",
+        project_name="test-project",
+        otel_format=True
+    )
+    instance = Treebeard()
+    
+    # Create a test log entry
+    log_entry = {
+        'tb_rv2_trace_id': 'T123456789',
+        'tb_rv2_message': 'Test message',
+        'tb_rv2_level': 'info',
+        'tb_rv2_file': '/path/to/file.py',
+        'tb_rv2_line': 42,
+        'tb_rv2_function': 'test_function',
+        'tb_rv2_source': 'treebeard',
+        'ts': 1634630400000
+    }
+    
+    result = instance.format_otel(log_entry)
+    
+    # Verify OpenTelemetry structure
+    assert result['TraceId'] == 'T123456789'
+    assert result['Body'] == 'Test message'
+    assert result['SeverityText'] == 'INFO'
+    assert result['SeverityNumber'] == 9
+    assert result['Timestamp'] == '1634630400000000000'  # nanoseconds
+    
+    # Verify Resource
+    assert result['Resource']['service.name'] == 'test-project'
+    assert result['Resource']['source'] == 'treebeard'
+    
+    # Verify InstrumentationScope
+    assert result['InstrumentationScope']['Name'] == 'treebeard-python-sdk'
+    assert result['InstrumentationScope']['Version'] == '2.0'
+    
+    # Verify Attributes
+    assert result['Attributes']['code.filepath'] == '/path/to/file.py'
+    assert result['Attributes']['code.lineno'] == 42
+    assert result['Attributes']['code.function'] == 'test_function'
+
+
+def test_otel_format_severity_mapping(reset_treebeard):
+    """Test OpenTelemetry severity level mapping."""
+    Treebeard.init(
+        api_key="test-key",
+        endpoint="http://test.com",
+        otel_format=True
+    )
+    instance = Treebeard()
+    
+    severity_tests = [
+        ('trace', 'TRACE', 1),
+        ('debug', 'DEBUG', 5),
+        ('info', 'INFO', 9),
+        ('warning', 'WARN', 13),
+        ('error', 'ERROR', 17),
+        ('critical', 'FATAL', 21)
+    ]
+    
+    for level, expected_text, expected_number in severity_tests:
+        log_entry = {
+            'tb_rv2_level': level,
+            'tb_rv2_message': f'Test {level} message'
+        }
+        
+        result = instance.format_otel(log_entry)
+        
+        assert result['SeverityText'] == expected_text
+        assert result['SeverityNumber'] == expected_number
+
+
+def test_otel_format_with_exception(reset_treebeard):
+    """Test OpenTelemetry formatting with exception information."""
+    Treebeard.init(
+        api_key="test-key",
+        endpoint="http://test.com",
+        otel_format=True
+    )
+    instance = Treebeard()
+    
+    log_entry = {
+        'tb_rv2_message': 'Error occurred',
+        'tb_rv2_level': 'error',
+        'tb_rv2_exec_type': 'ValueError',
+        'tb_rv2_exec_value': 'Invalid value provided',
+        'tb_rv2_traceback': 'Traceback (most recent call last):\n  File "test.py", line 1, in <module>\n    raise ValueError("Invalid value")\nValueError: Invalid value'
+    }
+    
+    result = instance.format_otel(log_entry)
+    
+    # Verify exception attributes
+    assert result['Attributes']['exception.type'] == 'ValueError'
+    assert result['Attributes']['exception.message'] == 'Invalid value provided'
+    assert 'Traceback (most recent call last)' in result['Attributes']['exception.stacktrace']
+
+
+def test_otel_format_with_trace_name(reset_treebeard):
+    """Test OpenTelemetry formatting with trace name."""
+    Treebeard.init(
+        api_key="test-key",
+        endpoint="http://test.com",
+        otel_format=True
+    )
+    instance = Treebeard()
+    
+    log_entry = {
+        'tb_rv2_message': 'Test trace',
+        'tb_rv2_trace_name': 'user_login_flow'
+    }
+    
+    result = instance.format_otel(log_entry)
+    
+    assert result['Attributes']['trace.name'] == 'user_login_flow'
+
+
+def test_otel_format_with_additional_attributes(reset_treebeard):
+    """Test OpenTelemetry formatting preserves additional attributes."""
+    Treebeard.init(
+        api_key="test-key",
+        endpoint="http://test.com",
+        otel_format=True
+    )
+    instance = Treebeard()
+    
+    log_entry = {
+        'tb_rv2_message': 'HTTP request',
+        'user_id': '12345',
+        'request_id': 'req_abc123',
+        'http_method': 'POST',
+        'status_code': 200
+    }
+    
+    result = instance.format_otel(log_entry)
+    
+    # Verify additional attributes are preserved
+    assert result['Attributes']['user_id'] == '12345'
+    assert result['Attributes']['request_id'] == 'req_abc123'
+    assert result['Attributes']['http_method'] == 'POST'
+    assert result['Attributes']['status_code'] == 200
+
+
+def test_format_log_uses_otel_when_enabled(reset_treebeard):
+    """Test that format_log uses OpenTelemetry format when enabled."""
+    Treebeard.init(
+        api_key="test-key",
+        endpoint="http://test.com",
+        otel_format=True
+    )
+    instance = Treebeard()
+    
+    log_entry = {
+        'tb_rv2_message': 'Test message',
+        'tb_rv2_level': 'info'
+    }
+    
+    # format_log should use OTel format
+    otel_result = instance.format_log(log_entry.copy())
+    
+    # Should have OTel structure
+    assert 'Body' in otel_result
+    assert 'SeverityText' in otel_result
+    assert 'InstrumentationScope' in otel_result
+
+
+def test_format_log_uses_standard_when_disabled(reset_treebeard):
+    """Test that format_log uses standard format when OTel is disabled."""
+    Treebeard.init(
+        api_key="test-key",
+        endpoint="http://test.com",
+        otel_format=False
+    )
+    instance = Treebeard()
+    
+    log_entry = {
+        'tb_rv2_message': 'Test message',
+        'tb_rv2_level': 'info'
+    }
+    
+    # format_log should use standard format
+    standard_result = instance.format_log(log_entry.copy())
+    
+    # Should have standard structure
+    assert 'msg' in standard_result
+    assert 'lvl' in standard_result
+    assert 'ts' in standard_result
