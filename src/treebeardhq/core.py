@@ -2,25 +2,51 @@
 Core functionality for the treebeard library.
 """
 import asyncio
+import json
+import logging
 import os
+import signal
 import sys
+import threading
 import time
 import traceback
-import signal
-from typing import Optional, Dict, Any, List, TypedDict
-import threading
+from queue import Queue
+from typing import Any, Dict, List, Optional
+
 import requests
-import json
-from queue import Queue, Empty
 from termcolor import colored
 
 from treebeardhq.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, FlushTimerWorker
 
 from .batch import LogBatch
-import logging
-from .constants import COMPACT_EXEC_TYPE_KEY, COMPACT_EXEC_VALUE_KEY, COMPACT_FUNCTION_KEY, COMPACT_SOURCE_KEY, COMPACT_TRACEBACK_KEY, COMPACT_TS_KEY, COMPACT_TRACE_ID_KEY, COMPACT_MESSAGE_KEY, COMPACT_LEVEL_KEY, EXEC_TYPE_RESERVED_V2, EXEC_VALUE_RESERVED_V2, FUNCTION_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TS_KEY, LogEntry, COMPACT_FILE_KEY, COMPACT_LINE_KEY, COMPACT_TRACE_NAME_KEY, TRACE_ID_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, FILE_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, TRACEBACK_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2
+from .constants import (
+    COMPACT_EXEC_TYPE_KEY,
+    COMPACT_EXEC_VALUE_KEY,
+    COMPACT_FILE_KEY,
+    COMPACT_FUNCTION_KEY,
+    COMPACT_LEVEL_KEY,
+    COMPACT_LINE_KEY,
+    COMPACT_MESSAGE_KEY,
+    COMPACT_SOURCE_KEY,
+    COMPACT_TRACE_ID_KEY,
+    COMPACT_TRACE_NAME_KEY,
+    COMPACT_TRACEBACK_KEY,
+    COMPACT_TS_KEY,
+    EXEC_TYPE_RESERVED_V2,
+    EXEC_VALUE_RESERVED_V2,
+    FILE_KEY_RESERVED_V2,
+    FUNCTION_KEY_RESERVED_V2,
+    LEVEL_KEY_RESERVED_V2,
+    LINE_KEY_RESERVED_V2,
+    MESSAGE_KEY_RESERVED_V2,
+    SOURCE_KEY_RESERVED_V2,
+    TRACE_ID_KEY_RESERVED_V2,
+    TRACE_NAME_KEY_RESERVED_V2,
+    TRACEBACK_KEY_RESERVED_V2,
+    TS_KEY,
+    LogEntry,
+)
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
-from .context import LoggingContext
 
 LEVEL_COLORS = {
     'trace': 'white',
@@ -117,23 +143,43 @@ class Treebeard:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, project_name: Optional[str] = None, api_key: Optional[str] = None, endpoint: Optional[str] = None,
-                 batch_size: int = DEFAULT_BATCH_SIZE, batch_age: float = DEFAULT_BATCH_AGE, log_to_stdout: Optional[bool] = None, stdout_log_level: str = 'INFO',
-                 capture_stdout: Optional[bool] = None, flush_interval: float = None):
+    def __init__(
+        self,
+        project_name: Optional[str] = None,
+        api_key: Optional[str] = None,
+        endpoint: Optional[str] = None,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+        batch_age: float = DEFAULT_BATCH_AGE,
+        log_to_stdout: Optional[bool] = None,
+        stdout_log_level: str = 'INFO',
+        capture_stdout: Optional[bool] = None,
+        flush_interval: float = None,
+        otel_format: Optional[bool] = None,
+    ):
         """
         Initialize the Treebeard class.
 
         Keyword Args:
-            project_name: The project name for the Treebeard project. This is used to identify the project on the backend, so please be careful when changing it.
-            api_key: The API key for the Treebeard project or set TREEBEARD_API_KEY in your environment.
-            endpoint: (optional) The endpoint for the Treebeard project You may also set TREEBEARD_API_URL in your environment or it will use the default production endpoint
+            project_name: The project name for the Treebeard project. This is used to
+                identify the project on the backend, so please be careful when changing it.
+            api_key: The API key for the Treebeard project or set TREEBEARD_API_KEY
+                in your environment.
+            endpoint: (optional) The endpoint for the Treebeard project You may also set
+                TREEBEARD_API_URL in your environment or it will use the default
+                production endpoint
             batch_size: Configure the number of logs sent per batch
-            batch_age: Configure how long to wait in between batches before sending logs regardless of batch size
+            batch_age: Configure how long to wait in between batches before sending logs
+                regardless of batch size
 
-            log_to_stdout: if true, Treebeard SDK will send everythign to standard out that we also send to out API
-            stdout_log_level: the level to log to stdout. Defaults to INFO. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL, FATAL, NOTSET
+            log_to_stdout: if true, Treebeard SDK will send everything to standard out
+                that we also send to out API
+            stdout_log_level: the level to log to stdout. Defaults to INFO.
+                Options: DEBUG, INFO, WARNING, ERROR, CRITICAL, FATAL, NOTSET
 
-            capture_stdout: Whether to capture print statements as info logs. Defaults to False.
+            capture_stdout: Whether to capture print statements as info logs.
+                Defaults to False.
+            otel_format: Whether to format logs according to OpenTelemetry specification.
+                Defaults to False.
         """
 
         # accept some of these variables even if we've already initialized automatically
@@ -161,6 +207,9 @@ class Treebeard:
 
         self._flush_interval = flush_interval if flush_interval is not None else os.getenv(
             'TREEBEARD_FLUSH_INTERVAL', DEFAULT_FLUSH_INTERVAL)
+        
+        self._otel_format = otel_format if otel_format is not None else os.getenv(
+            'TREEBEARD_OTEL_FORMAT', False)
 
         # Enable stdout capture if requested
         if self._capture_stdout:
@@ -212,6 +261,8 @@ class Treebeard:
             'stdout_log_level', self._stdout_log_level)
         self._capture_stdout = bool(kwargs.get(
             'capture_stdout', self._capture_stdout))
+        self._otel_format = bool(kwargs.get(
+            'otel_format', self._otel_format))
 
         if self._stdout_log_level:
             fallback_logger.setLevel(self._stdout_log_level)
@@ -240,6 +291,7 @@ class Treebeard:
             cls._instance._capture_stdout = False
             cls._instance._env = None
             cls._instance._project_name = None
+            cls._instance._otel_format = False
             cls._initialized = False
 
     def add(self, log_entry: Dict[str, Any]) -> None:
@@ -280,7 +332,7 @@ class Treebeard:
             self._log_to_fallback(log_entry)
             return
 
-        if not self._using_fallback and self._batch.add(self.format(log_entry)):
+        if not self._using_fallback and self._batch.add(self.format_log(log_entry)):
 
             if not Treebeard._worker_started:
                 if not _worker.is_alive():
@@ -293,6 +345,13 @@ class Treebeard:
 
         if self._using_fallback or self._env == "development" or self._log_to_stdout:
             self._log_to_fallback(log_entry)
+
+    def format_log(self, log_entry: Dict[str, Any]) -> LogEntry:
+        """Format log entry based on configuration."""
+        if self._otel_format:
+            return self.format_otel(log_entry)
+        else:
+            return self.format(log_entry)
 
     def format(self, log_entry: Dict[str, Any]) -> LogEntry:
         result: LogEntry = {}
@@ -326,6 +385,103 @@ class Treebeard:
             result['props'][COMPACT_TRACE_NAME_KEY] = result['props'].pop(
                 TRACE_NAME_KEY_RESERVED_V2)
         return result
+
+    def format_otel(self, log_entry: Dict[str, Any]) -> Dict[str, Any]:
+        """Format log entry according to OpenTelemetry specification."""
+        log_entry = log_entry.copy()
+        
+        # Create OpenTelemetry-compliant log record
+        otel_log = {}
+        
+        # Timestamp - convert to nanoseconds if needed
+        timestamp = log_entry.pop(TS_KEY, round(time.time() * 1000))
+        if isinstance(timestamp, (int, float)):
+            # Convert milliseconds to nanoseconds for OTel
+            otel_log["Timestamp"] = str(int(timestamp * 1_000_000))
+        
+        # Trace context
+        trace_id = log_entry.pop(TRACE_ID_KEY_RESERVED_V2, '')
+        if trace_id:
+            otel_log["TraceId"] = trace_id
+            
+        # Severity
+        level = log_entry.pop(LEVEL_KEY_RESERVED_V2, 'info')
+        severity_map = {
+            'trace': {'text': 'TRACE', 'number': 1},
+            'debug': {'text': 'DEBUG', 'number': 5},
+            'info': {'text': 'INFO', 'number': 9},
+            'warning': {'text': 'WARN', 'number': 13},
+            'error': {'text': 'ERROR', 'number': 17},
+            'critical': {'text': 'FATAL', 'number': 21}
+        }
+        severity = severity_map.get(level, severity_map['info'])
+        otel_log["SeverityText"] = severity['text']
+        otel_log["SeverityNumber"] = severity['number']
+        
+        # Body (message)
+        message = log_entry.pop(MESSAGE_KEY_RESERVED_V2, '')
+        otel_log["Body"] = message
+        
+        # Resource attributes
+        resource = {}
+        if self._project_name:
+            resource["service.name"] = self._project_name
+        
+        # Add source as resource attribute
+        source = log_entry.pop(SOURCE_KEY_RESERVED_V2, 'treebeard')
+        resource["source"] = source
+        
+        if resource:
+            otel_log["Resource"] = resource
+            
+        # InstrumentationScope
+        otel_log["InstrumentationScope"] = {
+            "Name": "treebeard-python-sdk",
+            "Version": "2.0"
+        }
+        
+        # Attributes - collect remaining fields
+        attributes = {}
+        
+        # File and line information
+        file_path = log_entry.pop(FILE_KEY_RESERVED_V2, '')
+        if file_path:
+            attributes["code.filepath"] = file_path
+            
+        line_num = log_entry.pop(LINE_KEY_RESERVED_V2, '')
+        if line_num:
+            attributes["code.lineno"] = line_num
+            
+        function_name = log_entry.pop(FUNCTION_KEY_RESERVED_V2, '')
+        if function_name:
+            attributes["code.function"] = function_name
+            
+        # Exception information
+        exec_type = log_entry.pop(EXEC_TYPE_RESERVED_V2, '')
+        exec_value = log_entry.pop(EXEC_VALUE_RESERVED_V2, '')
+        traceback_str = log_entry.pop(TRACEBACK_KEY_RESERVED_V2, '')
+        
+        if exec_type:
+            attributes["exception.type"] = exec_type
+        if exec_value:
+            attributes["exception.message"] = exec_value
+        if traceback_str:
+            attributes["exception.stacktrace"] = traceback_str
+            
+        # Trace name
+        trace_name = log_entry.pop(TRACE_NAME_KEY_RESERVED_V2, '')
+        if trace_name:
+            attributes["trace.name"] = trace_name
+            
+        # Add any remaining fields as attributes
+        for key, value in log_entry.items():
+            if value is not None:
+                attributes[key] = value
+                
+        if attributes:
+            otel_log["Attributes"] = attributes
+            
+        return otel_log
 
     def _log_to_fallback(self, log_entry: Dict[str, Any]) -> None:
 
@@ -426,8 +582,12 @@ class Treebeard:
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self._api_key}'
         }
-        data = json.dumps(
-            {'logs': logs, 'project_name': self._project_name, "v": self._config_version, "sdk_version": 2})
+        data = json.dumps({
+            'logs': logs,
+            'project_name': self._project_name,
+            "v": self._config_version,
+            "sdk_version": 2
+        })
 
         def send_request():
             max_retries = 3
@@ -460,7 +620,12 @@ class Treebeard:
         _send_queue.put(send_request)
 
     @classmethod
-    def register(cls, excepthook: Optional[Any] = None, threading_excepthook: Optional[Any] = None, loop_exception_handler: Optional[Any] = None) -> None:
+    def register(
+        cls,
+        excepthook: Optional[Any] = None,
+        threading_excepthook: Optional[Any] = None,
+        loop_exception_handler: Optional[Any] = None,
+    ) -> None:
         """Register the global exception handler for all contexts."""
         # Register for main thread exceptions
         if cls._original_excepthook is None:
