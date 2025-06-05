@@ -19,49 +19,135 @@ from typing import List, Optional, Dict, Any, Type, TextIO, Callable
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import COMPACT_TRACEBACK_KEY, EXEC_TYPE_RESERVED_V2, EXEC_VALUE_RESERVED_V2, FILE_KEY_RESERVED_V2, FUNCTION_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY
+from .constants import COMPACT_TRACEBACK_KEY, EXEC_TYPE_RESERVED_V2, EXEC_VALUE_RESERVED_V2, FILE_KEY_RESERVED_V2, FUNCTION_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY, TS_KEY
 
 import logging
 
 dev_logger = logging.getLogger("dev")
 
-
-# class GlobalStHandler(logging.Handler):
-#     def emit(self, record):
-#         log_entry = self.format(record)
-#         print(f"Global log: {log_entry} line: {record.lineno}")
-#         print(f"Global log: {log_entry} func: {record.funcName}")
-#         print(f"Global log: {log_entry} file: {record.filename}")
-#         print(f"Global log: {log_entry} level: {record.levelname}")
-#         print(f"Global log: {log_entry} message: {record.getMessage()}")
-#         print(f"Global log: {log_entry} args: {record.args}")
-#         print(f"Global log: {log_entry} exc_info: {record.exc_info}")
-#         print(f"Global log: {log_entry} exc_text: {record.exc_text}")
-#         print(f"Global log: {log_entry} stack_info: {record.stack_info}")
-#         print(f"Global log: {log_entry} process: {record.process}")
-#         print(f"Global log: {log_entry} thread: {record.thread}")
-#         print(f"Global log: {log_entry} name: {record.name}")
-#         print(f"Global log: {log_entry} module: {record.module}")
-#         print(f"Global log: {log_entry} msecs: {record.msecs}")
-#         print(f"Global log: {log_entry} msg: {record.msg}")
-#         print(f"Global log: {log_entry} pathname: {record.pathname}")
-#         print(f"Global log: {log_entry} processName: {record.processName}")
-#         print(
-#             f"Global log: {log_entry} relativeCreated: {record.relativeCreated}")
-#         print(f"Global log: {log_entry} threadName: {record.threadName}")
+level_map = {
+    logging.DEBUG: 'debug',
+    logging.INFO: 'info',
+    logging.WARNING: 'warning',
+    logging.WARN: 'warning',  # deprecated but still used
+    logging.ERROR: 'error',
+    logging.CRITICAL: 'critical',
+    logging.FATAL: 'critical'  # alias for CRITICAL
+}
 
 
-# # Attach to root logger
-# handler = GlobalHandler()
-# handler.setFormatter(logging.Formatter('%(levelname)s:%(name)s:%(message)s'))
-# logging.getLogger().addHandler(handler)
-# logging.getLogger().setLevel(logging.DEBUG)  # Capture all levels
+class TreebeardHandler(logging.Handler):
+    """Custom logging handler that forwards Python logger messages to Treebeard."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """
+        Process and forward a log record to the Treebeard system.
+
+        Args:
+            record: The LogRecord instance containing log data
+        """
+        try:
+            # Skip logs from the SDK itself to avoid infinite recursion
+            if (
+                'treebeard' in record.name.lower() or
+                'treebeardhq' in record.pathname or
+                record.name == 'treebeard.sdk'
+            ):
+                return
+
+            # Map standard Python logging levels to Treebeard levels
+            level_map = {
+                logging.DEBUG: 'debug',
+                logging.INFO: 'info',
+                logging.WARNING: 'warning',
+                logging.WARN: 'warning',  # deprecated but still used
+                logging.ERROR: 'error',
+                logging.CRITICAL: 'critical',
+                logging.FATAL: 'critical'  # alias for CRITICAL
+            }
+
+            # Get the mapped level, default to 'info'
+            treebeard_level = level_map.get(record.levelno, 'info')
+
+            # Format the message (handles args formatting)
+            message = record.getMessage()
+
+            # Build metadata for the log entry
+            metadata = {
+                SOURCE_KEY_RESERVED_V2: "python_logger",
+                'logger_name': record.name,
+                'module': record.module,
+                'process': record.process,
+                'process_name': record.processName,
+                'thread': record.thread,
+                'thread_name': record.threadName,
+                'relative_created': record.relativeCreated,
+                'msecs': record.msecs,
+                TS_KEY: round(record.created * 1000)  # Convert to milliseconds
+            }
+
+            # Handle original message template and args if available
+            if hasattr(record, 'msg') and record.args:
+                metadata['msg_template'] = str(record.msg)
+
+                if type(record.args) == tuple:
+                    metadata['msg_args'] = [str(arg) for arg in record.args]
+                elif type(record.args) == dict:
+                    metadata['params'] = record.args
+
+            # Handle exception information
+            if record.exc_info:
+                exc_type, exc_value, exc_traceback = record.exc_info
+                if exc_type and exc_value:
+                    # Create an exception object to pass to Log methods
+                    # This will be handled by _prepare_log_data's exception handling
+                    metadata['error'] = exc_value
+
+            # Handle explicit exception text
+            if record.exc_text:
+                metadata['exc_text'] = record.exc_text
+
+            # Handle stack info
+            if record.stack_info:
+                metadata['stack_info'] = record.stack_info
+
+            # Add any extra attributes from the log record
+            # These would come from logger.info("msg", extra={"custom": "value"})
+            for key, value in record.__dict__.items():
+                if key not in {
+                    'name', 'msg', 'args', 'levelname', 'levelno', 'pathname',
+                    'filename', 'module', 'lineno', 'funcName', 'created', 'msecs',
+                    'relativeCreated', 'thread', 'threadName', 'processName', 'process',
+                    'getMessage', 'exc_info', 'exc_text', 'stack_info', 'asctime', 'message'
+                }:
+                    metadata[key] = value
+
+            # Send to Treebeard using the same path as other Log methods
+            # This ensures consistent handling of trace_id, context, etc.
+            log_method_map = {
+                'debug': Log.debug,
+                'info': Log.info,
+                'warning': Log.warning,
+                'error': Log.error,
+                'critical': Log.critical
+            }
+
+            log_method = log_method_map.get(treebeard_level, Log.info)
+            log_method(message, metadata)
+
+        except Exception as e:
+            # Don't let handler errors break the application
+            sdk_logger.error(f"Error in TreebeardHandler: {str(e)}")
+
+
+# Global handler instance
+_treebeard_handler: Optional[TreebeardHandler] = None
 
 
 masked_terms = {
     'password', 'pass', 'pw', 'secret', 'api_key', 'access_token', 'refresh_token',
-    'token', 'key', 'auth', 'credentials', 'credential', 'private_key', 'public_key',
-    'ssh_key', 'certificate', 'cert', 'signature', 'sign', 'hash', 'salt', 'nonce',
+    'token', 'auth', 'credentials', 'credential', 'private_key', 'public_key',
+    'ssh_key', 'certificate', 'cert', 'signature', 'salt', 'nonce',
     'session_id', 'session', 'cookie', 'jwt', 'bearer', 'oauth', 'oauth2', 'openid',
     'client_id', 'client_secret', 'consumer_key', 'consumer_secret', 'aws_access_key',
     'aws_secret_key', 'aws_session_token', 'azure_key', 'gcp_key', 'api_secret',
@@ -248,6 +334,11 @@ class Log:
 
             for key, value in log_data.items():
                 if value is None:
+                    continue
+
+                # sent from logger
+                if key == 'msg_args':
+                    processed_data[key] = value
                     continue
 
                 # Handle exceptions - these get special treatment with traceback extraction
@@ -602,6 +693,63 @@ class Log:
             True if stdout override is enabled, False otherwise
         """
         return StdoutOverride.is_enabled()
+
+    @staticmethod
+    def enable_python_logger_forwarding(level: int = logging.DEBUG, logger_name: Optional[str] = None) -> None:
+        """
+        Enable forwarding of Python logger messages to Treebeard.
+
+        Args:
+            level: The minimum logging level to capture (default: DEBUG)
+            logger_name: Specific logger name to attach to, or None for root logger
+        """
+        global _treebeard_handler
+
+        if _treebeard_handler is None:
+            _treebeard_handler = TreebeardHandler()
+            _treebeard_handler.setLevel(level)
+
+            # Get the target logger (root logger if no name specified)
+            target_logger = logging.getLogger(logger_name)
+            target_logger.addHandler(_treebeard_handler)
+
+            # Ensure the logger level allows our handler to receive messages
+            if target_logger.level > level:
+                target_logger.setLevel(level)
+
+            sdk_logger.debug(
+                f"Treebeard Python logger forwarding enabled for logger: {logger_name or 'root'}")
+
+    @staticmethod
+    def disable_python_logger_forwarding(logger_name: Optional[str] = None) -> None:
+        """
+        Disable forwarding of Python logger messages to Treebeard.
+
+        Args:
+            logger_name: Specific logger name to detach from, or None for root logger
+        """
+        global _treebeard_handler
+
+        if _treebeard_handler is not None:
+            target_logger = logging.getLogger(logger_name)
+            target_logger.removeHandler(_treebeard_handler)
+
+            # Only clear the global handler if we're removing from root logger
+            if logger_name is None:
+                _treebeard_handler = None
+
+            sdk_logger.debug(
+                f"Treebeard Python logger forwarding disabled for logger: {logger_name or 'root'}")
+
+    @staticmethod
+    def is_python_logger_forwarding_enabled() -> bool:
+        """
+        Return whether Python logger forwarding is currently enabled.
+
+        Returns:
+            True if Python logger forwarding is enabled, False otherwise
+        """
+        return _treebeard_handler is not None
 
 
 Treebeard.register(Log._handle_exception,

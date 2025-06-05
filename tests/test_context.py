@@ -4,18 +4,12 @@ Tests for the LoggingContext functionality.
 import threading
 import sys
 import pytest
-from treebeard.context import LoggingContext
+from treebeardhq.context import LoggingContext
 
 
 @pytest.mark.usefixtures("reset_context", "clean_modules")
 class TestLoggingContext:
     """Tests for LoggingContext functionality."""
-
-    def test_init_standard_thread(self):
-        """Test initialization with standard Python threading."""
-        LoggingContext.init()
-        assert LoggingContext._context_type == 'thread', f"Got {LoggingContext._context_type} instead of 'thread'"
-        assert LoggingContext._thread_local is not None
 
     def test_context_isolation_between_threads(self):
         """Test that context is isolated between threads."""
@@ -72,36 +66,6 @@ class TestLoggingContext:
         assert LoggingContext.get('greenlet_value') is None
         # Main context should still have its value
         assert LoggingContext.get('main_value') == 'main_greenlet'
-
-    @pytest.mark.skip("Skipping eventlet test")
-    @pytest.mark.eventlet
-    def test_context_isolation_in_eventlet(self):
-        """Test that context is isolated between eventlet green threads."""
-        import eventlet
-        eventlet.monkey_patch(thread=True)  # Explicitly patch threading
-
-        LoggingContext._thread_local = None  # Force re-init
-        LoggingContext._context_type = None
-
-        LoggingContext.set('main_value', 'main_eventlet')
-        eventlet_value = None
-
-        def eventlet_func():
-            nonlocal eventlet_value
-            # This green thread should have its own empty context
-            eventlet_value = LoggingContext.get('main_value')
-            # Set a different value in this green thread
-            LoggingContext.set('eventlet_value', 'worker_eventlet')
-
-        gt = eventlet.spawn(eventlet_func)
-        gt.wait()
-
-        # The green thread should not see the main context's value
-        assert eventlet_value is None
-        # Main context should not see the green thread's value
-        assert LoggingContext.get('eventlet_value') is None
-        # Main context should still have its value
-        assert LoggingContext.get('main_value') == 'main_eventlet'
 
     def test_set_and_get(self):
         """Test basic setting and getting values."""

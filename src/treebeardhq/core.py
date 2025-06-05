@@ -155,6 +155,9 @@ class Treebeard:
         capture_stdout: Optional[bool] = None,
         flush_interval: float = None,
         otel_format: Optional[bool] = None,
+        capture_python_logger: Optional[bool] = None,
+        python_logger_level: str = 'DEBUG',
+        python_logger_name: Optional[str] = None,
     ):
         """
         Initialize the Treebeard class.
@@ -180,6 +183,12 @@ class Treebeard:
                 Defaults to False.
             otel_format: Whether to format logs according to OpenTelemetry specification.
                 Defaults to False.
+            capture_python_logger: Whether to capture standard Python logger messages.
+                Defaults to False.
+            python_logger_level: The minimum logging level to capture from Python logger.
+                Defaults to 'DEBUG'. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+            python_logger_name: Specific logger name to capture from, or None for root logger.
+                Defaults to None (captures from root logger).
         """
 
         # accept some of these variables even if we've already initialized automatically
@@ -190,7 +199,14 @@ class Treebeard:
         if Treebeard._initialized:
             return
 
-        self._api_key = api_key or os.getenv('TREEBEARD_API_KEY')
+        self._api_key = api_key if api_key else os.getenv(
+            'TREEBEARD_API_KEY')
+
+        if self._api_key and type(self._api_key) != str:
+            raise ValueError("API key must be a string")
+
+        self._api_key = self._api_key.strip() if self._api_key else None
+
         self._endpoint = endpoint or os.getenv(
             'TREEBEARD_API_URL', DEFAULT_API_URL)
         self._capture_stdout = capture_stdout if capture_stdout is not None else os.getenv(
@@ -201,13 +217,20 @@ class Treebeard:
         self._stdout_log_level = stdout_log_level if stdout_log_level is not None else os.getenv(
             'TREEBEARD_STDOUT_LOG_LEVEL', 'INFO')
 
+        self._capture_python_logger = capture_python_logger if capture_python_logger is not None else os.getenv(
+            'TREEBEARD_CAPTURE_PYTHON_LOGGER', False)
+        self._python_logger_level = python_logger_level if python_logger_level is not None else os.getenv(
+            'TREEBEARD_PYTHON_LOGGER_LEVEL', 'DEBUG')
+        self._python_logger_name = python_logger_name if python_logger_name is not None else os.getenv(
+            'TREEBEARD_PYTHON_LOGGER_NAME', None)
+
         self._env = os.getenv('ENV', "production")
         self._debug_mode = os.getenv(
             'TREEBEARD_DEBUG_MODE')
 
         self._flush_interval = flush_interval if flush_interval is not None else os.getenv(
             'TREEBEARD_FLUSH_INTERVAL', DEFAULT_FLUSH_INTERVAL)
-        
+
         self._otel_format = otel_format if otel_format is not None else os.getenv(
             'TREEBEARD_OTEL_FORMAT', False)
 
@@ -219,6 +242,23 @@ class Treebeard:
 
             if self._stdout_log_level:
                 fallback_logger.setLevel(self._stdout_log_level)
+
+        # Enable Python logger capture if requested
+        if self._capture_python_logger:
+            # Import here to avoid circular imports
+            from .log import Log
+            # Map string level to logging constant
+            level_map = {
+                'DEBUG': logging.DEBUG,
+                'INFO': logging.INFO,
+                'WARNING': logging.WARNING,
+                'ERROR': logging.ERROR,
+                'CRITICAL': logging.CRITICAL
+            }
+            log_level = level_map.get(
+                self._python_logger_level.upper(), logging.DEBUG)
+            Log.enable_python_logger_forwarding(
+                level=log_level, logger_name=self._python_logger_name)
 
         Treebeard._initialized = True
 
@@ -263,6 +303,12 @@ class Treebeard:
             'capture_stdout', self._capture_stdout))
         self._otel_format = bool(kwargs.get(
             'otel_format', self._otel_format))
+        self._capture_python_logger = bool(kwargs.get(
+            'capture_python_logger', self._capture_python_logger))
+        self._python_logger_level = kwargs.get(
+            'python_logger_level', self._python_logger_level)
+        self._python_logger_name = kwargs.get(
+            'python_logger_name', self._python_logger_name)
 
         if self._stdout_log_level:
             fallback_logger.setLevel(self._stdout_log_level)
@@ -270,6 +316,21 @@ class Treebeard:
         if self._capture_stdout:
             from .log import Log
             Log.enable_stdout_override()
+
+        if self._capture_python_logger:
+            from .log import Log
+            # Map string level to logging constant
+            level_map = {
+                'DEBUG': logging.DEBUG,
+                'INFO': logging.INFO,
+                'WARNING': logging.WARNING,
+                'ERROR': logging.ERROR,
+                'CRITICAL': logging.CRITICAL
+            }
+            log_level = level_map.get(
+                self._python_logger_level.upper(), logging.DEBUG)
+            Log.enable_python_logger_forwarding(
+                level=log_level, logger_name=self._python_logger_name)
 
     @property
     def api_key(self) -> Optional[str]:
@@ -281,6 +342,13 @@ class Treebeard:
 
     @classmethod
     def reset(cls) -> None:
+        global has_warned
+        global found_api_key
+        global _worker
+
+        has_warned = False
+        found_api_key = False
+        _worker = None
         if cls._instance:
             cls._instance._api_key = None
             cls._instance._endpoint = None
@@ -292,6 +360,9 @@ class Treebeard:
             cls._instance._env = None
             cls._instance._project_name = None
             cls._instance._otel_format = False
+            cls._instance._capture_python_logger = False
+            cls._instance._python_logger_level = 'DEBUG'
+            cls._instance._python_logger_name = None
             cls._initialized = False
 
     def add(self, log_entry: Dict[str, Any]) -> None:
@@ -302,14 +373,14 @@ class Treebeard:
         if self._using_fallback:
             # let's check to see if we've lazy-loaded env vars
             key = os.getenv('TREEBEARD_API_KEY')
-            if key:
+            if key and key.strip() != "":
                 # reset env if we've found a key, just to make sure
                 self._using_fallback = False
                 self._env = os.getenv('ENV', self._env)
                 self._endpoint = os.getenv(
                     'TREEBEARD_API_URL', self._endpoint)
 
-                self._api_key = key
+                self._api_key = key.strip()
                 self._log_to_stdout = os.getenv(
                     'TREEBEARD_LOG_TO_STDOUT', self._log_to_stdout)
                 self._capture_stdout = os.getenv(
@@ -389,21 +460,21 @@ class Treebeard:
     def format_otel(self, log_entry: Dict[str, Any]) -> Dict[str, Any]:
         """Format log entry according to OpenTelemetry specification."""
         log_entry = log_entry.copy()
-        
+
         # Create OpenTelemetry-compliant log record
         otel_log = {}
-        
+
         # Timestamp - convert to nanoseconds if needed
         timestamp = log_entry.pop(TS_KEY, round(time.time() * 1000))
         if isinstance(timestamp, (int, float)):
             # Convert milliseconds to nanoseconds for OTel
             otel_log["Timestamp"] = str(int(timestamp * 1_000_000))
-        
+
         # Trace context
         trace_id = log_entry.pop(TRACE_ID_KEY_RESERVED_V2, '')
         if trace_id:
             otel_log["TraceId"] = trace_id
-            
+
         # Severity
         level = log_entry.pop(LEVEL_KEY_RESERVED_V2, 'info')
         severity_map = {
@@ -417,70 +488,70 @@ class Treebeard:
         severity = severity_map.get(level, severity_map['info'])
         otel_log["SeverityText"] = severity['text']
         otel_log["SeverityNumber"] = severity['number']
-        
+
         # Body (message)
         message = log_entry.pop(MESSAGE_KEY_RESERVED_V2, '')
         otel_log["Body"] = message
-        
+
         # Resource attributes
         resource = {}
         if self._project_name:
             resource["service.name"] = self._project_name
-        
+
         # Add source as resource attribute
         source = log_entry.pop(SOURCE_KEY_RESERVED_V2, 'treebeard')
         resource["source"] = source
-        
+
         if resource:
             otel_log["Resource"] = resource
-            
+
         # InstrumentationScope
         otel_log["InstrumentationScope"] = {
             "Name": "treebeard-python-sdk",
             "Version": "2.0"
         }
-        
+
         # Attributes - collect remaining fields
         attributes = {}
-        
+
         # File and line information
         file_path = log_entry.pop(FILE_KEY_RESERVED_V2, '')
         if file_path:
             attributes["code.filepath"] = file_path
-            
+
         line_num = log_entry.pop(LINE_KEY_RESERVED_V2, '')
         if line_num:
             attributes["code.lineno"] = line_num
-            
+
         function_name = log_entry.pop(FUNCTION_KEY_RESERVED_V2, '')
         if function_name:
             attributes["code.function"] = function_name
-            
+
         # Exception information
         exec_type = log_entry.pop(EXEC_TYPE_RESERVED_V2, '')
         exec_value = log_entry.pop(EXEC_VALUE_RESERVED_V2, '')
         traceback_str = log_entry.pop(TRACEBACK_KEY_RESERVED_V2, '')
-        
+
         if exec_type:
             attributes["exception.type"] = exec_type
         if exec_value:
             attributes["exception.message"] = exec_value
         if traceback_str:
             attributes["exception.stacktrace"] = traceback_str
-            
+
         # Trace name
         trace_name = log_entry.pop(TRACE_NAME_KEY_RESERVED_V2, '')
         if trace_name:
             attributes["trace.name"] = trace_name
-            
+
         # Add any remaining fields as attributes
         for key, value in log_entry.items():
             if value is not None:
                 attributes[key] = value
-                
+
         if attributes:
             otel_log["Attributes"] = attributes
-            
+
         return otel_log
 
     def _log_to_fallback(self, log_entry: Dict[str, Any]) -> None:

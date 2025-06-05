@@ -33,6 +33,7 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.0.290",
     "build>=1.2.2",
+    "freezegun>=1.5.2",
 ]
 
 [project.urls]

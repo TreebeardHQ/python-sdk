@@ -1,7 +1,9 @@
 """Tests for log batching functionality."""
+from datetime import timedelta
+from freezegun import freeze_time
 import pytest
 import time
-from treebeard.batch import LogBatch
+from treebeardhq.batch import LogBatch
 
 
 @pytest.mark.usefixtures("reset_context")
@@ -22,15 +24,19 @@ class TestBatch:
 
     def test_batch_respects_max_age(self):
         """Test that batch signals flush at max age."""
-        batch = LogBatch(max_size=100, max_age=0.1)
 
-        assert not batch.add("log1")
-        time.sleep(0.2)  # Wait longer than max_age
-        assert batch.add("log2")  # Should trigger flush due to age
+        with freeze_time("2025-01-01 12:00:00") as frozen_time:
 
-        logs = batch.get_logs()
-        assert len(logs) == 2
-        assert logs == ["log1", "log2"]
+            batch = LogBatch(max_size=100, max_age=0.1)
+
+            assert not batch.add("log1")
+
+            frozen_time.tick(delta=timedelta(seconds=10))
+            assert batch.add("log2")  # Should trigger flush due to age
+
+            logs = batch.get_logs()
+            assert len(logs) == 2
+            assert logs == ["log1", "log2"]
 
     def test_batch_clear_on_get(self):
         """Test that getting logs clears the batch."""
