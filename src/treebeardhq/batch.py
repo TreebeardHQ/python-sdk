@@ -1,13 +1,62 @@
 """
-Batching functionality for Treebeard logs.
+Batching functionality for Treebeard logs and objects.
 
-This module handles the caching and batching of log entries
+This module handles the caching and batching of log entries and objects
 before they are sent to the server.
 """
 from typing import List, Any, Dict
 from threading import Lock
 import time
 from .constants import LogEntry
+
+
+class ObjectBatch:
+    """Handles batching of object entries for registration."""
+
+    def __init__(self, max_size: int = 100, max_age: float = 30.0):
+        """Initialize a new ObjectBatch.
+
+        Args:
+            max_size: Maximum number of entries before auto-flush
+            max_age: Maximum age in seconds before auto-flush
+        """
+        self._objects: List[Dict[str, Any]] = []
+        self._lock = Lock()
+        self._last_flush = int(time.time())
+        self.max_size = max_size
+        self.max_age = max_age
+
+    def add(self, obj_entry: Dict[str, Any]) -> bool:
+        """Add an object entry to the batch.
+
+        Args:
+            obj_entry: The object entry to add
+
+        Returns:
+            bool: True if batch should be flushed
+        """
+        with self._lock:
+            self._objects.append(obj_entry)
+
+            # Check if we should flush
+            should_flush = (
+                len(self._objects) >= self.max_size or
+                (int(time.time()) - self._last_flush) >= self.max_age
+            )
+
+            return should_flush
+
+    def get_objects(self) -> List[Dict[str, Any]]:
+        """Get all cached objects and clear the batch.
+
+        Returns:
+            List of object entries
+        """
+        with self._lock:
+            objects = self._objects
+            self._objects = []
+            self._last_flush = int(time.time())
+            return objects
 
 
 class LogBatch:

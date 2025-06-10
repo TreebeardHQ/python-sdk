@@ -752,8 +752,8 @@ class Log:
         return _treebeard_handler is not None
 
 
-Treebeard.register(Log._handle_exception,
-                   Log._handle_threading_exception, Log._handle_async_exception)
+Treebeard.register_exception_handlers(Log._handle_exception,
+                                       Log._handle_threading_exception, Log._handle_async_exception)
 
 
 def mask_pw(match):
