@@ -38,7 +38,13 @@ def clean_modules():
 
     # Then clean modules
     saved_modules = {}
-    for name in ['gevent', 'eventlet', 'gevent.local', 'eventlet.corolocal', 'eventlet.green.threading']:
+    for name in ['gevent',
+                 'eventlet',
+                 'gevent.local',
+                 'eventlet.core',
+                 'eventlet.coros',
+                 'eventlet.corolocal',
+                 'eventlet.green.threading']:
         if name in sys.modules:
             saved_modules[name] = sys.modules[name]
             del sys.modules[name]

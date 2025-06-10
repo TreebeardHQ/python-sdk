@@ -128,12 +128,11 @@ def test_project_name_initialization(reset_treebeard):
             # The request should be queued, but we can't easily test the async part
             # Instead, let's test the data generation directly
             import json
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {instance._api_key}'
-            }
+
             data = json.dumps(
-                {'logs': logs, 'project_name': instance._project_name, "v": instance._config_version})
+                {'logs': logs,
+                 'project_name': instance._project_name,
+                 "v": instance._config_version})
             parsed_data = json.loads(data)
             assert parsed_data['project_name'] == project_name
 
@@ -173,7 +172,9 @@ def test_project_name_none_when_not_provided(reset_treebeard):
         # Test the actual payload generation
         import json
         data = json.dumps(
-            {'logs': logs, 'project_name': instance._project_name, "v": instance._config_version})
+            {'logs': logs,
+             'project_name': instance._project_name,
+             "v": instance._config_version})
         parsed_data = json.loads(data)
         assert parsed_data['project_name'] is None
 
@@ -211,7 +212,9 @@ def test_project_name_reset_on_reinit(reset_treebeard):
     # Before the fix, this would cause project_name to be ignored due to early return
     Treebeard.init(api_key="test-key", endpoint="http://test.com")
 
-    # After the fix, project_name should still be "my-project" since no new project_name was provided
+    # After the fix,
+    # project_name should still be "my-project"
+    # since no new project_name was provided
     assert instance._project_name == "my-project"
 
     # Now test with a different project name - should update
@@ -322,13 +325,17 @@ def test_otel_format_with_exception(reset_treebeard):
         otel_format=True
     )
     instance = Treebeard()
-
     log_entry = {
         'tb_rv2_message': 'Error occurred',
         'tb_rv2_level': 'error',
         'tb_rv2_exec_type': 'ValueError',
         'tb_rv2_exec_value': 'Invalid value provided',
-        'tb_rv2_traceback': 'Traceback (most recent call last):\n  File "test.py", line 1, in <module>\n    raise ValueError("Invalid value")\nValueError: Invalid value'
+        'tb_rv2_traceback': (
+            'Traceback (most recent call last):\n'
+            '  File "test.py", line 1, in <module>\n'
+            '    raise ValueError("Invalid value")\n'
+            'ValueError: Invalid value'
+        )
     }
 
     result = instance.format_otel(log_entry)

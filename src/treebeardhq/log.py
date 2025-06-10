@@ -710,7 +710,9 @@ class Log:
         return StdoutOverride.is_enabled()
 
     @staticmethod
-    def enable_python_logger_forwarding(level: int = logging.DEBUG, logger_name: Optional[str] = None) -> None:
+    def enable_python_logger_forwarding(level: int = logging.DEBUG,
+                                        logger_name: Optional[str] = None,
+                                        ) -> None:
         """
         Enable forwarding of Python logger messages to Treebeard.
 
@@ -768,7 +770,7 @@ class Log:
 
 
 Treebeard.register_exception_handlers(Log._handle_exception,
-                                       Log._handle_threading_exception, Log._handle_async_exception)
+                                      Log._handle_threading_exception, Log._handle_async_exception)
 
 
 def mask_pw(match):

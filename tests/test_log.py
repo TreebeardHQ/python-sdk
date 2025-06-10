@@ -166,7 +166,7 @@ def test_fallback_logging(captured_logs, mock_colored):
     with patch("logging.StreamHandler.emit") as mock_emit:
 
         # Start a trace context
-        trace_id = Log.start("test_context")
+        Log.start("test_context")
 
         # Test different log levels
         Log.debug("Debug message", extra_field="debug_value")
@@ -225,14 +225,14 @@ def test_switching_to_api_logging():
 
     # First initialize without API key
     Treebeard.init()
-    assert Treebeard()._using_fallback == True
+    assert Treebeard()._using_fallback
 
     # Reset and initialize with API key
     Treebeard.reset()
     Treebeard.init(api_key="test_key", endpoint="http://test.endpoint")
 
     instance = Treebeard()
-    assert instance._using_fallback == False
+    assert not instance._using_fallback
     assert instance._api_key == "test_key"
     assert instance._endpoint == "http://test.endpoint"
 
@@ -401,7 +401,7 @@ def test_treebeard_init_with_python_logger_capture():
     )
 
     instance = Treebeard()
-    assert instance._capture_python_logger == True
+    assert instance._capture_python_logger
     assert instance._python_logger_level == "INFO"
 
     # Should have enabled forwarding
@@ -486,7 +486,7 @@ def test_python_logger_inherits_existing_trace_context(treebeard, mocker):
     # Skip the first call which is from Log.start("shared_trace")
     python_logger_calls = calls[1:]  # Get the last 3 calls
 
-    for i, call in enumerate(python_logger_calls):
+    for _i, call in enumerate(python_logger_calls):
         log_data = call[0][0]
         assert log_data[TRACE_ID_KEY_RESERVED_V2] == trace_id
         assert log_data[SOURCE_KEY_RESERVED_V2] == "python_logger"

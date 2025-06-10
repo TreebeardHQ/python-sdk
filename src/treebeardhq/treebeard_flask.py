@@ -99,8 +99,10 @@ class TreebeardFlask:
                     app._treebeard_instrumented = True
                 except Exception as e:
                     sdk_logger.error(
-                        f"Error in TreebeardFlask.clear_context : {str(e)}: {traceback.format_exc()}")
+                        f"Error in TreebeardFlask.clear_context: "
+                        f"{str(e)}: {traceback.format_exc()}")
 
         except Exception as e:
             sdk_logger.error(
-                f"Error in TreebeardFlask.instrument : {str(e)}: {traceback.format_exc()}")
+                f"Error in TreebeardFlask.instrument: "
+                f"{str(e)}: {traceback.format_exc()}")
