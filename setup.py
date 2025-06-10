@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 # Determine the package name and directory
 package_name = "treebeardhq"

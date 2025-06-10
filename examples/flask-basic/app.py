@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify
-from treebeard import Treebeard, Log
-import utils
 import time
+
+import utils
+from flask import Flask, jsonify, request
+from treebeard import Log, Treebeard
 
 app = Flask(__name__)
 

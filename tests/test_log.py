@@ -1,12 +1,22 @@
 """Tests for the Log class functionality."""
-import pytest
-from treebeardhq.log import Log
-from treebeardhq.core import Treebeard
-from treebeardhq.context import LoggingContext
-from treebeardhq.constants import MESSAGE_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, EXEC_TYPE_RESERVED_V2, EXEC_VALUE_RESERVED_V2, TRACEBACK_KEY_RESERVED_V2, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2
 import logging
-from unittest.mock import patch, MagicMock
-from freezegun import freeze_time
+from unittest.mock import patch
+
+import pytest
+
+from treebeardhq.constants import (
+    EXEC_TYPE_RESERVED_V2,
+    EXEC_VALUE_RESERVED_V2,
+    LEVEL_KEY_RESERVED_V2,
+    MESSAGE_KEY_RESERVED_V2,
+    SOURCE_KEY_RESERVED_V2,
+    TRACE_ID_KEY_RESERVED_V2,
+    TRACE_NAME_KEY_RESERVED_V2,
+    TRACEBACK_KEY_RESERVED_V2,
+)
+from treebeardhq.context import LoggingContext
+from treebeardhq.core import Treebeard
+from treebeardhq.log import Log
 
 
 @pytest.fixture

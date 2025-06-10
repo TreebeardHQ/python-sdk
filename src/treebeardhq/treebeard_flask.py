@@ -6,9 +6,10 @@ when a request ends.
 """
 import importlib
 import traceback
+
 from treebeardhq.log import Log
-from .context import LoggingContext
-from .internal_utils.fallback_logger import fallback_logger, sdk_logger
+
+from .internal_utils.fallback_logger import sdk_logger
 
 
 class TreebeardFlask:

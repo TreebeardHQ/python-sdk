@@ -4,9 +4,10 @@ Batching functionality for Treebeard logs and objects.
 This module handles the caching and batching of log entries and objects
 before they are sent to the server.
 """
-from typing import List, Any, Dict
-from threading import Lock
 import time
+from threading import Lock
+from typing import Any, Dict, List
+
 from .constants import LogEntry
 
 

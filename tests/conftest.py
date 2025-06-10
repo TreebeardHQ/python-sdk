@@ -1,9 +1,10 @@
 """
 Configure pytest to find the source package
 """
-import pytest
 import os
 import sys
+
+import pytest
 
 # Add the src directory to the Python path
 src_path = os.path.abspath(os.path.join(

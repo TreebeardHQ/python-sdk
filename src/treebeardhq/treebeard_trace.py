@@ -1,9 +1,9 @@
-from functools import wraps
 import traceback
-from typing import Callable, Any, List, Optional
+from functools import wraps
+from typing import Any, Callable, Optional
 
-from .log import Log, sdk_logger
 from .context import LoggingContext
+from .log import Log, sdk_logger
 
 
 def treebeard_trace(name: Optional[str] = None):

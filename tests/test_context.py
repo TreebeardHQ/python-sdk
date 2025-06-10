@@ -2,8 +2,9 @@
 Tests for the LoggingContext functionality.
 """
 import threading
-import sys
+
 import pytest
+
 from treebeardhq.context import LoggingContext
 
 

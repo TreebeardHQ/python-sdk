@@ -10,8 +10,6 @@ import sys
 import threading
 import time
 import traceback
-import uuid
-import warnings
 from datetime import datetime
 from queue import Queue
 from typing import Any, Dict, List, Optional, Union
@@ -22,7 +20,6 @@ from termcolor import colored
 from treebeardhq.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, FlushTimerWorker
 
 from .batch import LogBatch, ObjectBatch
-from .context import LoggingContext
 from .constants import (
     COMPACT_EXEC_TYPE_KEY,
     COMPACT_EXEC_VALUE_KEY,
@@ -50,6 +47,7 @@ from .constants import (
     TS_KEY,
     LogEntry,
 )
+from .context import LoggingContext
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 
 LEVEL_COLORS = {

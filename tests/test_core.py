@@ -1,9 +1,11 @@
 """
 Tests for the core functionality.
 """
-import pytest
 import logging
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from treebeardhq.core import Treebeard
 from treebeardhq.internal_utils.fallback_logger import fallback_logger
 

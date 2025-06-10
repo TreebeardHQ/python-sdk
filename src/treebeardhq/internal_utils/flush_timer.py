@@ -1,8 +1,8 @@
 
 # constants.py (or in the same file, near the other defaults)
 import threading
-from treebeardhq.internal_utils.fallback_logger import sdk_logger
 
+from treebeardhq.internal_utils.fallback_logger import sdk_logger
 
 DEFAULT_FLUSH_INTERVAL = 30.0          # seconds
 

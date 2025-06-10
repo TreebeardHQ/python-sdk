@@ -6,6 +6,7 @@ allowing creation and management of trace contexts.
 """
 import asyncio
 import inspect
+import logging
 import os
 import re
 import sys
@@ -13,15 +14,29 @@ import threading
 import traceback
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Type, TextIO, Callable
+from typing import Any, Dict, Optional, TextIO, Type
 
-
-from .internal_utils.fallback_logger import fallback_logger, sdk_logger
+from .constants import (
+    EXEC_TYPE_RESERVED_V2,
+    EXEC_VALUE_RESERVED_V2,
+    FILE_KEY_RESERVED_V2,
+    FUNCTION_KEY_RESERVED_V2,
+    LEVEL_KEY_RESERVED_V2,
+    LINE_KEY_RESERVED_V2,
+    MESSAGE_KEY_RESERVED_V2,
+    SOURCE_KEY_RESERVED_V2,
+    TAGS_KEY,
+    TRACE_COMPLETE_ERROR_MARKER,
+    TRACE_COMPLETE_SUCCESS_MARKER,
+    TRACE_ID_KEY_RESERVED_V2,
+    TRACE_NAME_KEY_RESERVED_V2,
+    TRACE_START_MARKER,
+    TRACEBACK_KEY_RESERVED_V2,
+    TS_KEY,
+)
 from .context import LoggingContext
 from .core import Treebeard
-from .constants import COMPACT_TRACEBACK_KEY, EXEC_TYPE_RESERVED_V2, EXEC_VALUE_RESERVED_V2, FILE_KEY_RESERVED_V2, FUNCTION_KEY_RESERVED_V2, LEVEL_KEY_RESERVED_V2, LINE_KEY_RESERVED_V2, MESSAGE_KEY_RESERVED_V2, SOURCE_KEY_RESERVED_V2, TRACE_COMPLETE_ERROR_MARKER, TRACE_COMPLETE_SUCCESS_MARKER, TRACE_ID_KEY_RESERVED_V2, TRACE_NAME_KEY_RESERVED_V2, TRACE_START_MARKER, TRACEBACK_KEY_RESERVED_V2, TAGS_KEY, TS_KEY
-
-import logging
+from .internal_utils.fallback_logger import sdk_logger
 
 dev_logger = logging.getLogger("dev")
 
@@ -383,7 +398,7 @@ class Log:
                     else:
                         processed_data[key] = value
 
-            if not TRACEBACK_KEY_RESERVED_V2 in processed_data:
+            if TRACEBACK_KEY_RESERVED_V2 not in processed_data:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
                 if exc_type and exc_value and exc_traceback:
                     processed_data[TRACEBACK_KEY_RESERVED_V2] = ''.join(traceback.format_exception(

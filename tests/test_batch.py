@@ -1,8 +1,9 @@
 """Tests for log batching functionality."""
 from datetime import timedelta
-from freezegun import freeze_time
+
 import pytest
-import time
+from freezegun import freeze_time
+
 from treebeardhq.batch import LogBatch
 
 

@@ -9,7 +9,7 @@ which works across different concurrency models including:
 - Eventlet
 """
 import contextvars
-from typing import Dict, Any, Optional, Type, ClassVar
+from typing import Any, ClassVar, Dict
 
 
 class LoggingContext:

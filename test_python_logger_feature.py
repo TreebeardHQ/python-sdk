@@ -4,8 +4,10 @@ Manual test script for the Python logger integration feature.
 """
 
 import logging
+
 from treebeardhq.core import Treebeard
 from treebeardhq.log import Log
+
 
 def test_basic_functionality():
     """Test basic Python logger forwarding functionality."""
@@ -58,7 +60,7 @@ def test_exception_handling():
     try:
         # Simulate an error
         result = 1 / 0
-    except ZeroDivisionError as e:
+    except ZeroDivisionError:
         logger.error("Division by zero occurred", exc_info=True)
         
     print("Exception logged!")
