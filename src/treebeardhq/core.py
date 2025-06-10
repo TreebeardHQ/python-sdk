@@ -219,7 +219,7 @@ class Treebeard:
         self._endpoint = endpoint or os.getenv(
             'TREEBEARD_API_URL', DEFAULT_API_URL)
         self._objects_endpoint = (
-            self._endpoint.replace('/logs/batch', '/objects/register') 
+            self._endpoint.replace('/logs/batch', '/objects/register')
             if self._endpoint else DEFAULT_OBJECTS_API_URL
         )
         self._capture_stdout = capture_stdout if capture_stdout is not None else os.getenv(
@@ -277,7 +277,8 @@ class Treebeard:
 
         # don't reset some of these if we've already initialized
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
-        self._object_batch = ObjectBatch(max_size=batch_size, max_age=batch_age)
+        self._object_batch = ObjectBatch(
+            max_size=batch_size, max_age=batch_age)
         self._using_fallback = not bool(self._api_key)
 
         if self._flush_timer is None:
@@ -666,7 +667,7 @@ class Treebeard:
 
     def register_object(self, obj: Any = None, **kwargs: Any) -> None:
         """Register objects for tracking in Treebeard.
-        
+
         Args:
             obj: Object to register (optional, can be dict or object with attributes)
             **kwargs: Object data to register as keyword arguments. Should include an 'id' field.
@@ -675,41 +676,65 @@ class Treebeard:
             sdk_logger.warning(
                 "Treebeard is not initialized - object registration will be skipped")
             return
-        
-        # Use obj if provided, otherwise use kwargs
-        data_to_register = obj if obj is not None else kwargs
-            
-        # Validate and format the object
-        formatted_obj = self._format_object(data_to_register)
-        if formatted_obj is None:
+
+        global _worker
+        # Handle single object registration
+        if obj is not None:
+
+            data_to_register = obj
+            formatted_obj = self._format_object(data_to_register)
+            if formatted_obj is not None:
+                self._attach_to_context(formatted_obj)
+                if not self._using_fallback and self._object_batch.add(formatted_obj):
+                    if not Treebeard._worker_started:
+
+                        if not _worker.is_alive():
+                            _worker = LogSenderWorker()
+                            _worker.start()
+                            sdk_logger.info(
+                                "Treebeard log worker started post-fork.")
+                        Treebeard._worker_started = True
+                    self.flush_objects()
             return
-        
-        # Attach object to trace context
-        self._attach_to_context(formatted_obj)
-            
-        # Add to batch and flush if needed
-        if not self._using_fallback and self._object_batch.add(formatted_obj):
-            if not Treebeard._worker_started:
-                global _worker
-                if not _worker.is_alive():
-                    _worker = LogSenderWorker()
-                    _worker.start()
-                    sdk_logger.info(
-                        "Treebeard log worker started post-fork.")
-                Treebeard._worker_started = True
-            self.flush_objects()
+
+        # Handle kwargs registration - register each key-value pair
+        if not kwargs:
+            sdk_logger.warning("No object or kwargs provided for registration")
+            return
+
+        for key, value in kwargs.items():
+            if not isinstance(value, dict):
+                # Add the key as an attribute to help with naming
+                value._kwarg_key = key
+
+            formatted_obj = self._format_object(value)
+            if formatted_obj is not None:
+                self._attach_to_context(formatted_obj)
+                if not self._using_fallback and self._object_batch.add(formatted_obj):
+                    if not Treebeard._worker_started:
+                        if not _worker.is_alive():
+                            _worker = LogSenderWorker()
+                            _worker.start()
+                            sdk_logger.info(
+                                "Treebeard log worker started post-fork.")
+                        Treebeard._worker_started = True
+                    self.flush_objects()
 
     def _format_object(self, obj_data: Union[Dict[str, Any], Any]) -> Optional[Dict[str, Any]]:
         """Format and validate an object for registration.
-        
+
         Args:
             obj_data: Raw object data (dict or object with attributes)
-            
+
         Returns:
             Formatted object or None if validation fails
         """
         # Convert object to dict if needed
         if not isinstance(obj_data, dict):
+            # Get class name if it's a class instance
+            class_name = obj_data.__class__.__name__ if hasattr(
+                obj_data, '__class__') else None
+
             # Convert object attributes to dict
             try:
                 if hasattr(obj_data, '__dict__'):
@@ -718,89 +743,98 @@ class Treebeard:
                     # Try to convert using vars()
                     obj_dict = vars(obj_data)
             except TypeError:
-                sdk_logger.warning("Cannot convert object to dictionary for registration")
+                sdk_logger.warning(
+                    "Cannot convert object to dictionary for registration")
                 return None
         else:
             obj_dict = obj_data.copy()
-        
+            class_name = None
+
         # Check for ID field and warn if missing
         if 'id' not in obj_dict:
-            warnings.warn(
-                "Object registered without 'id' field. This may cause issues with object tracking.",
-                UserWarning
-            )
-        
-        # Generate name and id from the object
-        name = obj_dict.get('name', obj_dict.get('id', str(uuid.uuid4())))
-        obj_id = obj_dict.get('id', str(uuid.uuid4()))
-        
+            sdk_logger.warning(
+                "Object registered without 'id' field. This may cause issues with object tracking.")
+            return None
+
+        name = None
+        if class_name:
+            name = class_name.lower()
+        if not name and hasattr(obj_data, '_kwarg_key'):
+            name = obj_data._kwarg_key.lower()
+
+        obj_id = obj_dict.get('id')
+
         # Validate and filter fields
         fields = {}
         for key, value in obj_dict.items():
             if key in ['name', 'id']:
                 continue
-                
-            if self._is_valid_field(key, value):
+
+            field = self._format_field(key, value)
+            if field:
                 fields[key] = value
-        
+
         return {
             'name': name,
             'id': obj_id,
             'fields': fields
         }
 
-    def _is_valid_field(self, key: str, value: Any) -> bool:
+    def _format_field(self, key: str, value: Any) -> bool:
         """Validate if a field should be included in object registration.
-        
+
         Args:
             key: Field name
             value: Field value
-            
+
         Returns:
             True if field is valid for registration
         """
         # Check for numbers
         if isinstance(value, (int, float)):
-            return True
-            
+            return value
+
         # Check for booleans
         if isinstance(value, bool):
-            return True
-            
+            return value
+
         # Check for dates
         if isinstance(value, datetime):
-            return True
-            
+            return value.isoformat()
+
         # Check for searchable strings (under 1024 chars)
         if isinstance(value, str):
             if len(value) <= 1024:
                 # Simple heuristic: if it looks like metadata (short, no newlines)
                 # rather than body text
-                return '\n' not in value and '\r' not in value
-                
-        return False
+                valid = '\n' not in value and '\r' not in value
+                if valid:
+                    return value
+
+        return None
 
     def _attach_to_context(self, formatted_obj: Dict[str, Any]) -> None:
         """Attach the registered object to the current trace context.
-        
+
         Args:
             formatted_obj: The formatted object with name, id, and fields
         """
         object_name = formatted_obj.get('name', '')
         object_id = formatted_obj.get('id', '')
-        
+
         if object_name and object_id:
             # Create context key as {name}_id
             context_key = f"{object_name}_id"
-            
+
             # Set the context value to the object's ID
             LoggingContext.set(context_key, object_id)
-            
-            sdk_logger.debug(f"Attached object to context: {context_key} = {object_id}")
+
+            sdk_logger.debug(
+                f"Attached object to context: {context_key} = {object_id}")
 
     def flush_objects(self) -> int:
         """Flush all pending object registrations.
-        
+
         Returns:
             Number of objects flushed
         """
@@ -875,6 +909,8 @@ class Treebeard:
             delay = 1  # seconds
             for attempt in range(max_retries):
                 try:
+                    sdk_logger.warning(
+                        f"Sending objects to {self._objects_endpoint}")
                     response = requests.post(
                         self._objects_endpoint, headers=headers, data=data)
                     if response.ok:
@@ -900,10 +936,10 @@ class Treebeard:
 
         _send_queue.put(send_request)
 
-    @classmethod  
+    @classmethod
     def register(cls, obj: Any = None, **kwargs: Any) -> None:
         """Register objects for tracking in Treebeard (class method).
-        
+
         Args:
             obj: Object to register (optional, can be dict or object with attributes)
             **kwargs: Object data to register as keyword arguments. Should include an 'id' field.
