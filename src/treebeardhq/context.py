@@ -11,6 +11,8 @@ which works across different concurrency models including:
 import contextvars
 from typing import Any, ClassVar, Dict
 
+from treebeardhq.constants import TRACE_NAME_KEY_RESERVED_V2
+
 
 class LoggingContext:
     """Context storage for Treebeard logging.
@@ -69,3 +71,10 @@ class LoggingContext:
             A dictionary containing all context data
         """
         return cls.get_context().copy()
+
+    @classmethod
+    def update_trace_name(cls, trace_name: str) -> None:
+        """Update the trace name in the current context."""
+        context = cls.get_context()
+        context[TRACE_NAME_KEY_RESERVED_V2] = trace_name
+        cls._context_var.set(context)
