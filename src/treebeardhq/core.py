@@ -118,8 +118,8 @@ signal.signal(signal.SIGINT, _handle_shutdown)
 signal.signal(signal.SIGTERM, _handle_shutdown)
 
 # Constants
-DEFAULT_BATCH_SIZE = 100
-DEFAULT_BATCH_AGE = 5.0
+DEFAULT_BATCH_SIZE = 500
+DEFAULT_BATCH_AGE = 30.0
 DEFAULT_API_URL = 'https://api.treebeardhq.com/logs/batch'
 DEFAULT_OBJECTS_API_URL = 'https://api.treebeardhq.com/objects/register'
 

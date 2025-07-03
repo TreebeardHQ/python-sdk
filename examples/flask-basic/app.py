@@ -2,7 +2,7 @@ import time
 
 import utils
 from flask import Flask, jsonify, request
-from treebeard import Log, Treebeard
+from treebeardhq import Log, Treebeard
 
 app = Flask(__name__)
 

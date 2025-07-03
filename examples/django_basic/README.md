@@ -19,6 +19,38 @@ This example demonstrates how to integrate Treebeard logging with a Django appli
    python manage.py runserver
    ```
 
+## Configuration
+
+This example shows two ways to configure Treebeard in Django:
+
+### Method 1: Using AppConfig (Recommended)
+
+In `example_app/apps.py`:
+```python
+from django.apps import AppConfig
+from treebeardhq.treebeard_django import TreebeardDjango
+
+class ExampleAppConfig(AppConfig):
+    name = "example_app"
+    
+    def ready(self):
+        TreebeardDjango.init(
+            project_name="django-example",
+            log_to_stdout=True,
+        )
+```
+
+### Method 2: Using Django Settings
+
+In `settings.py`:
+```python
+TREEBEARD_API_KEY = "your-api-key-here"
+TREEBEARD_PROJECT_NAME = "django-example" 
+TREEBEARD_LOG_TO_STDOUT = True
+```
+
+Then call `TreebeardDjango.init()` in your AppConfig's `ready()` method (it will pick up the settings automatically).
+
 ## Available Endpoints
 
 - `GET /` - Home page with basic logging

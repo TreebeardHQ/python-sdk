@@ -87,27 +87,27 @@ class TreebeardDjangoMiddleware:
             self.start_initial_trace(request)
 
             response = None
-            exception = None
 
             try:
                 response = self.get_response(request)
+                trace_name = self.get_trace_name(request)
+                LoggingContext.update_trace_name(trace_name)
+                Log.complete_success()
 
                 return response
             except Exception as e:
-
-                raise
-            finally:
-                # Complete trace at the end of request processing
                 trace_name = self.get_trace_name(request)
-
                 LoggingContext.update_trace_name(trace_name)
-                self.process_response(request, response, exception)
+                Log.complete_error(error=e)
+                raise
 
         except Exception as e:
-            sdk_logger.error(
-                f"Error in TreebeardDjangoMiddleware.__call__: {str(e)}: {traceback.format_exc()}")
+
             # If there's an error in our middleware, we still want to process the request
-            return self.get_response(request)
+            if response:
+                return response
+            else:
+                return self.get_response(request)
 
     def start_initial_trace(self, request):
         """Start a new trace immediately when request starts.
@@ -179,6 +179,52 @@ class TreebeardDjango:
     """Django instrumentation for Treebeard."""
 
     @staticmethod
+    def init(**kwargs):
+        """Initialize Treebeard with Django-specific defaults.
+
+        This method should be called in your Django settings or AppConfig.
+        It accepts the same parameters as Treebeard.init().
+
+        Args:
+            **kwargs: Configuration options passed to Treebeard.init()
+        """
+        from treebeardhq.core import Treebeard
+
+        # Get Django settings if available
+        try:
+            from django.conf import settings
+
+            # Merge Django settings with kwargs
+            django_config = {}
+
+            # Map Django settings to Treebeard config
+            if hasattr(settings, 'TREEBEARD_API_KEY'):
+                django_config['api_key'] = settings.TREEBEARD_API_KEY
+            if hasattr(settings, 'TREEBEARD_PROJECT_NAME'):
+                django_config['project_name'] = settings.TREEBEARD_PROJECT_NAME
+            if hasattr(settings, 'TREEBEARD_ENDPOINT'):
+                django_config['endpoint'] = settings.TREEBEARD_ENDPOINT
+            if hasattr(settings, 'TREEBEARD_LOG_TO_STDOUT'):
+                django_config['log_to_stdout'] = settings.TREEBEARD_LOG_TO_STDOUT
+            if hasattr(settings, 'TREEBEARD_CAPTURE_STDOUT'):
+                django_config['capture_stdout'] = settings.TREEBEARD_CAPTURE_STDOUT
+            if hasattr(settings, 'TREEBEARD_BATCH_SIZE'):
+                django_config['batch_size'] = settings.TREEBEARD_BATCH_SIZE
+            if hasattr(settings, 'TREEBEARD_BATCH_AGE'):
+                django_config['batch_age'] = settings.TREEBEARD_BATCH_AGE
+
+            # Kwargs override Django settings
+            config = {**django_config, **kwargs}
+
+        except ImportError:
+            # Django not available, just use kwargs
+            config = kwargs
+
+        # Initialize Treebeard
+        Treebeard.init(**config)
+        sdk_logger.info("Treebeard initialized for Django")
+
+    @staticmethod
     def instrument():
         """Instrument Django application by adding middleware to settings.
 
@@ -197,5 +243,21 @@ MIDDLEWARE = [
     # ... other middleware
 ]
 
-2. The middleware will automatically start traces for each request and clear context on completion.
+2. Configure Treebeard in your settings.py or apps.py:
+
+# In settings.py
+TREEBEARD_API_KEY = "your-api-key-here"
+TREEBEARD_PROJECT_NAME = "your-project-name"
+
+# Or in apps.py
+from treebeardhq.treebeard_django import TreebeardDjango
+
+class YourAppConfig(AppConfig):
+    def ready(self):
+        TreebeardDjango.init(
+            api_key="your-api-key-here",
+            project_name="your-project-name"
+        )
+
+3. The middleware will automatically start traces for each request and clear context on completion.
         """)

@@ -14,7 +14,7 @@ from .constants import LogEntry
 class ObjectBatch:
     """Handles batching of object entries for registration."""
 
-    def __init__(self, max_size: int = 100, max_age: float = 30.0):
+    def __init__(self, max_size: int = 500, max_age: float = 30.0):
         """Initialize a new ObjectBatch.
 
         Args:
@@ -63,7 +63,7 @@ class ObjectBatch:
 class LogBatch:
     """Handles batching of log entries."""
 
-    def __init__(self, max_size: int = 100, max_age: float = 30.0):
+    def __init__(self, max_size: int = 500, max_age: float = 30.0):
         """Initialize a new LogBatch.
 
         Args:
