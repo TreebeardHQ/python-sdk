@@ -17,7 +17,7 @@ from termcolor import colored
 
 from treebeardhq.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, FlushTimerWorker
 
-from .batch import LogBatch, ObjectBatch
+from .batch import LogBatch, ObjectBatch, SpanBatch
 from .constants import (
     COMPACT_EXEC_TYPE_KEY,
     COMPACT_EXEC_VALUE_KEY,
@@ -67,10 +67,11 @@ found_api_key = False
 
 def _handle_shutdown(sig, frame):
     curr_time = round(time.time() * 1000)
-    sdk_logger.info("Shutdown signal received, flushing logs and objects...")
+    sdk_logger.info("Shutdown signal received, flushing logs, objects, and spans...")
     treebeard_instance = Treebeard()
     treebeard_instance.flush()
     treebeard_instance.flush_objects()
+    treebeard_instance.flush_spans()
 
     if Treebeard._instance and Treebeard._instance._flush_timer:
         Treebeard._instance._flush_timer.stop()
@@ -89,6 +90,7 @@ DEFAULT_BATCH_SIZE = 500
 DEFAULT_BATCH_AGE = 30.0
 DEFAULT_API_URL = 'https://api.treebeardhq.com/logs/batch'
 DEFAULT_OBJECTS_API_URL = 'https://api.treebeardhq.com/objects/register'
+DEFAULT_SPANS_API_URL = 'https://api.treebeardhq.com/spans/batch'
 
 
 class Treebeard:
@@ -98,8 +100,10 @@ class Treebeard:
     _debug_mode: bool = False
     _batch: Optional[LogBatch] = None
     _object_batch: Optional[ObjectBatch] = None
+    _span_batch: Optional[SpanBatch] = None
     _endpoint: Optional[str] = None
     _objects_endpoint: Optional[str] = None
+    _spans_endpoint: Optional[str] = None
     _env: Optional[str] = None
 
     _original_excepthook: Optional[Any] = None
@@ -188,6 +192,10 @@ class Treebeard:
             self._endpoint.replace('/logs/batch', '/objects/register')
             if self._endpoint else DEFAULT_OBJECTS_API_URL
         )
+        self._spans_endpoint = (
+            self._endpoint.replace('/logs/batch', '/spans/batch')
+            if self._endpoint else DEFAULT_SPANS_API_URL
+        )
         self._capture_stdout = capture_stdout if capture_stdout is not None else os.getenv(
             'TREEBEARD_CAPTURE_STDOUT', False)
         self._log_to_stdout = log_to_stdout if log_to_stdout is not None else os.getenv(
@@ -251,6 +259,7 @@ class Treebeard:
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
         self._object_batch = ObjectBatch(
             max_size=batch_size, max_age=batch_age)
+        self._span_batch = SpanBatch(max_size=batch_size, max_age=batch_age)
         self._using_fallback = not bool(self._api_key)
 
         if self._flush_timer is None:
@@ -264,6 +273,7 @@ class Treebeard:
                 api_key=self._api_key,
                 endpoint=self._endpoint,
                 objects_endpoint=self._objects_endpoint,
+                spans_endpoint=self._spans_endpoint,
                 project_name=self._project_name
             )
 
@@ -349,6 +359,7 @@ class Treebeard:
             cls._instance._objects_endpoint = None
             cls._instance._batch = None
             cls._instance._object_batch = None
+            cls._instance._span_batch = None
             cls._instance._using_fallback = True
             cls._instance._log_to_stdout = False
             cls._instance._debug_mode = False
@@ -392,6 +403,7 @@ class Treebeard:
                         api_key=self._api_key,
                         endpoint=self._endpoint,
                         objects_endpoint=self._objects_endpoint,
+                        spans_endpoint=self._spans_endpoint,
                         project_name=self._project_name
                     )
 
@@ -811,6 +823,47 @@ class Treebeard:
         if objects and self._exporter:
             self._exporter.send_objects_async(
                 objects, self._config_version, self.update_project_config
+            )
+
+        return count
+
+    def add_span(self, span) -> None:
+        """Add a span to the span batch.
+        
+        Args:
+            span: The span to add to the batch
+        """
+        if not self._initialized:
+            return
+            
+        if not self._using_fallback and self._span_batch:
+            if self._span_batch.add(span):
+                if not self._exporter:
+                    self._exporter = TreebeardExporter(
+                        api_key=self._api_key,
+                        endpoint=self._endpoint,
+                        objects_endpoint=self._objects_endpoint,
+                        spans_endpoint=self._spans_endpoint,
+                        project_name=self._project_name
+                    )
+                self._exporter.start_worker()
+                self.flush_spans()
+
+    def flush_spans(self) -> int:
+        """Flush all pending spans.
+
+        Returns:
+            Number of spans flushed
+        """
+        if not self._initialized:
+            raise RuntimeError(
+                "Treebeard must be initialized before flushing spans")
+
+        spans = self._span_batch.get_spans()
+        count = len(spans)
+        if spans and self._exporter:
+            self._exporter.send_spans_async(
+                spans, self._config_version, self.update_project_config
             )
 
         return count

@@ -1,15 +1,18 @@
 """
-Export functionality for sending logs and objects to the Treebeard API.
+Export functionality for sending logs, objects, and spans to the Treebeard API.
 """
 import json
 import threading
 import time
 from queue import Queue
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 import requests
 
 from .internal_utils.fallback_logger import sdk_logger
+
+if TYPE_CHECKING:
+    from .spans import Span
 
 
 class LogSenderWorker(threading.Thread):
@@ -39,15 +42,16 @@ class LogSenderWorker(threading.Thread):
 
 
 class TreebeardExporter:
-    """Handles exporting logs and objects to the Treebeard API."""
+    """Handles exporting logs, objects, and spans to the Treebeard API."""
     
     def __init__(
         self, api_key: str, endpoint: str, objects_endpoint: str, 
-        project_name: Optional[str] = None
+        spans_endpoint: Optional[str] = None, project_name: Optional[str] = None
     ):
         self._api_key = api_key
         self._endpoint = endpoint
         self._objects_endpoint = objects_endpoint
+        self._spans_endpoint = spans_endpoint or endpoint.replace('/logs/batch', '/spans/batch')
         self._project_name = project_name
         self._send_queue: Queue = Queue()
         self._worker: Optional[LogSenderWorker] = None
@@ -86,6 +90,16 @@ class TreebeardExporter:
         """Queue objects to be sent asynchronously."""
         def send_request():
             self._send_objects(objects, config_version, update_callback)
+            
+        self._send_queue.put(send_request)
+        
+    def send_spans_async(
+        self, spans: List["Span"], config_version: Optional[int] = None,
+        update_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> None:
+        """Queue spans to be sent asynchronously."""
+        def send_request():
+            self._send_spans(spans, config_version, update_callback)
             
         self._send_queue.put(send_request)
         
@@ -176,3 +190,88 @@ class TreebeardExporter:
                 sdk_logger.error("error while sending objects", exc_info=e)
             time.sleep(delay)
         sdk_logger.error("All attempts to send objects failed.")
+
+    def _send_spans(
+        self, spans: List["Span"], config_version: Optional[int] = None,
+        update_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> None:
+        """Send spans to the Treebeard API in OpenTelemetry format."""
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {self._api_key}'
+        }
+        
+        # Convert spans to OpenTelemetry format
+        resource_spans = self._format_spans_for_otel(spans)
+        
+        data = json.dumps({
+            'resourceSpans': resource_spans,
+            'project_name': self._project_name,
+            "v": config_version,
+            "sdk_version": 2
+        })
+
+        max_retries = 3
+        delay = 1  # seconds
+        for attempt in range(max_retries):
+            try:
+                sdk_logger.debug(f"Sending spans to {self._spans_endpoint}")
+                response = requests.post(
+                    self._spans_endpoint, headers=headers, data=data)
+                if response.ok:
+                    sdk_logger.debug(
+                        f"Spans sent successfully. spans sent: {len(spans)}")
+
+                    result = response.json()
+
+                    # we get an updated config if the server has a later config version than we
+                    # sent it
+                    if (
+                        isinstance(result, dict) and result.get('updated_config') 
+                        and update_callback
+                    ):
+                        update_callback(result.get('updated_config'))
+
+                    return result
+                else:
+                    sdk_logger.warning(
+                        f"Attempt {attempt+1} failed: {response.status_code} - {response.text}")
+            except Exception as e:
+                sdk_logger.error("error while sending spans", exc_info=e)
+            time.sleep(delay)
+        sdk_logger.error("All attempts to send spans failed.")
+
+    def _format_spans_for_otel(self, spans: List["Span"]) -> List[Dict[str, Any]]:
+        """Format spans into OpenTelemetry ResourceSpans structure."""
+        if not spans:
+            return []
+        
+        # Group spans by service (project) name
+        scope_spans = []
+        otel_spans = []
+        
+        for span in spans:
+            otel_spans.append(span.to_otel_dict())
+        
+        scope_spans.append({
+            "scope": {
+                "name": "treebeard-python-sdk",
+                "version": "2.0"
+            },
+            "spans": otel_spans
+        })
+        
+        # Create resource with service name
+        resource_attributes = []
+        if self._project_name:
+            resource_attributes.append({
+                "key": "service.name",
+                "value": {"stringValue": self._project_name}
+            })
+        
+        return [{
+            "resource": {
+                "attributes": resource_attributes
+            },
+            "scopeSpans": scope_spans
+        }]
