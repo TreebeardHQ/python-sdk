@@ -6,7 +6,7 @@ before they are sent to the server.
 """
 import time
 from threading import Lock
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from .constants import LogEntry
 

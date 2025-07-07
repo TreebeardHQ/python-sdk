@@ -5,7 +5,7 @@ import json
 import threading
 import time
 from queue import Queue
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import requests
 
