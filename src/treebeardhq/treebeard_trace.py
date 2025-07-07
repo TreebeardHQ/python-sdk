@@ -1,7 +1,7 @@
 from functools import wraps
 from typing import Any, Callable, Optional
 
-from .span import end_span, start_span
+from .span import end_span, record_exception_on_span, start_span
 from .spans import SpanKind, SpanStatus, SpanStatusCode
 
 
@@ -72,11 +72,9 @@ def treebeard_trace(name: Optional[str] = None):
             except Exception as e:
                 # End span with error status
                 if 'span' in locals():
-                    span.add_event("exception", {
-                        "exception.type": type(e).__name__,
-                        "exception.message": str(e)
-                    })
-                    end_span(span, SpanStatus(SpanStatusCode.ERROR, str(e)))
+                    # Record exception with full traceback
+                    record_exception_on_span(e, span)
+                    end_span(span)
                 
                 raise  # re-raises the same exception, with full traceback
                 

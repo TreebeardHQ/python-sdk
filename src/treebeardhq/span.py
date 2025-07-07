@@ -1,6 +1,7 @@
 """
 Span API for OpenTelemetry-compliant distributed tracing.
 """
+import traceback
 from contextlib import contextmanager
 from typing import Any, Dict, Generator, Optional
 
@@ -127,6 +128,47 @@ def add_span_event(
         target_span.add_event(name, attributes)
 
 
+def record_exception_on_span(
+    exception: Exception, 
+    span: Optional[Span] = None,
+    escaped: bool = False
+) -> None:
+    """Record an exception as an event on a span with type, message and stack trace.
+    
+    Args:
+        exception: The exception to record
+        span: The span to record the exception on. If None, uses current active span.
+        escaped: Whether the exception escaped the span
+    """
+    target_span = span or LoggingContext.get_current_span()
+    if not target_span:
+        return
+    
+    # Get exception information
+    exception_type = type(exception).__name__
+    exception_message = str(exception)
+    exception_stacktrace = ''.join(traceback.format_exception(
+        type(exception), exception, exception.__traceback__
+    ))
+    
+    # Create exception event attributes
+    attributes = {
+        "exception.type": exception_type,
+        "exception.message": exception_message,
+        "exception.stacktrace": exception_stacktrace
+    }
+    
+    if escaped:
+        attributes["exception.escaped"] = "true"
+    
+    # Add exception event to span
+    target_span.add_event("exception", attributes)
+    
+    # Set span status to ERROR if not already set
+    if target_span.status.code == SpanStatusCode.UNSET:
+        target_span.status = SpanStatus(SpanStatusCode.ERROR, exception_message)
+
+
 @contextmanager
 def span_context(
     name: str,
@@ -155,14 +197,9 @@ def span_context(
         yield span
     except Exception as e:
         if record_exception:
-            span.add_event(
-                "exception",
-                {
-                    "exception.type": type(e).__name__,
-                    "exception.message": str(e)
-                }
-            )
-        span.status = SpanStatus(SpanStatusCode.ERROR, str(e))
+            record_exception_on_span(e, span, escaped=True)
+        else:
+            span.status = SpanStatus(SpanStatusCode.ERROR, str(e))
         raise
     finally:
         end_span(span)

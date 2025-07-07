@@ -7,8 +7,8 @@ when a request ends.
 import importlib
 import traceback
 
-from treebeardhq.span import end_span, start_span
-from treebeardhq.spans import SpanKind, SpanStatus, SpanStatusCode
+from .span import end_span, record_exception_on_span, start_span
+from .spans import SpanKind, SpanStatus, SpanStatusCode
 
 from .internal_utils.fallback_logger import sdk_logger
 
@@ -136,12 +136,9 @@ class TreebeardFlask:
                     current_span = LoggingContext.get_current_span()
                     if current_span:
                         if exc:
-                            # Set error status and add exception event
-                            current_span.add_event("exception", {
-                                "exception.type": type(exc).__name__,
-                                "exception.message": str(exc)
-                            })
-                            end_span(current_span, SpanStatus(SpanStatusCode.ERROR, str(exc)))
+                            # Record exception with full traceback
+                            record_exception_on_span(exc, current_span)
+                            end_span(current_span)
                         else:
                             # Set success status
                             end_span(current_span, SpanStatus(SpanStatusCode.OK))
