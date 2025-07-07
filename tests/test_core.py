@@ -89,52 +89,42 @@ def test_switching_between_modes(reset_treebeard):
 def test_project_name_initialization(reset_treebeard):
     """Test that project_name is properly set and sent to API."""
     project_name = "test-project"
+    
+    # Mock the TreebeardExporter class
+    with patch('treebeardhq.core.TreebeardExporter') as MockExporter:
+        # Create a mock exporter instance
+        mock_exporter = MagicMock()
+        MockExporter.return_value = mock_exporter
+        
+        # Initialize with project_name
+        Treebeard.init(project_name=project_name,
+                       api_key="test-key", endpoint="http://test.com")
+        instance = Treebeard()
 
-    # Initialize with project_name
-    Treebeard.init(project_name=project_name,
-                   api_key="test-key", endpoint="http://test.com")
-    instance = Treebeard()
+        # Verify project_name is set
+        assert instance._project_name == project_name
+        
+        # Verify exporter was initialized with correct parameters
+        MockExporter.assert_called_once_with(
+            api_key="test-key",
+            endpoint="http://test.com",
+            objects_endpoint="http://test.com",
+            project_name=project_name
+        )
 
-    # Verify project_name is set
-    assert instance._project_name == project_name
-
-    # Mock the _send_logs method directly to capture the payload
-    with patch.object(instance, '_send_logs') as mock_send:
         # Add a log entry to trigger sending
         instance.add({'level': 'info', 'message': 'test'})
         instance.flush()
 
-        # Verify _send_logs was called
-        assert mock_send.called
-        call_args = mock_send.call_args
+        # Verify the exporter's send_logs_async was called
+        assert mock_exporter.send_logs_async.called
+        call_args = mock_exporter.send_logs_async.call_args
         logs = call_args[0][0]  # First positional argument
+        config_version = call_args[0][1]  # Second positional argument
+        update_callback = call_args[0][2]  # Third positional argument
+        
         assert len(logs) == 1
-
-        # Now test the actual payload generation by calling _send_logs with mocked requests
-        with patch('treebeardhq.core.requests.post') as mock_post:
-            mock_response = MagicMock()
-            mock_response.ok = True
-            mock_response.json.return_value = {}
-            mock_post.return_value = mock_response
-
-            # Call _send_logs directly to test payload
-            mock_send.side_effect = None  # Remove the mock
-            instance._send_logs(logs)
-
-            # Give the worker thread time to process
-            import time
-            time.sleep(0.1)
-
-            # The request should be queued, but we can't easily test the async part
-            # Instead, let's test the data generation directly
-            import json
-
-            data = json.dumps(
-                {'logs': logs,
-                 'project_name': instance._project_name,
-                 "v": instance._config_version})
-            parsed_data = json.loads(data)
-            assert parsed_data['project_name'] == project_name
+        assert update_callback == instance.update_project_config
 
 
 def test_project_name_not_overwritten_on_reinitialization(reset_treebeard):
@@ -152,31 +142,32 @@ def test_project_name_not_overwritten_on_reinitialization(reset_treebeard):
 
 def test_project_name_none_when_not_provided(reset_treebeard):
     """Test that project_name is None when not provided during initialization."""
-    Treebeard.init(api_key="test-key", endpoint="http://test.com")
-    instance = Treebeard()
+    # Mock the TreebeardExporter class
+    with patch('treebeardhq.core.TreebeardExporter') as MockExporter:
+        # Create a mock exporter instance
+        mock_exporter = MagicMock()
+        MockExporter.return_value = mock_exporter
+        
+        Treebeard.init(api_key="test-key", endpoint="http://test.com")
+        instance = Treebeard()
 
-    # Should be None when not provided
-    assert instance._project_name is None
+        # Should be None when not provided
+        assert instance._project_name is None
+        
+        # Verify exporter was initialized with None project_name
+        MockExporter.assert_called_once_with(
+            api_key="test-key",
+            endpoint="http://test.com",
+            objects_endpoint="http://test.com",
+            project_name=None
+        )
 
-    # Mock the _send_logs method directly to capture the payload
-    with patch.object(instance, '_send_logs') as mock_send:
         # Add a log entry to trigger sending
         instance.add({'level': 'info', 'message': 'test'})
         instance.flush()
 
-        # Verify _send_logs was called
-        assert mock_send.called
-        call_args = mock_send.call_args
-        logs = call_args[0][0]  # First positional argument
-
-        # Test the actual payload generation
-        import json
-        data = json.dumps(
-            {'logs': logs,
-             'project_name': instance._project_name,
-             "v": instance._config_version})
-        parsed_data = json.loads(data)
-        assert parsed_data['project_name'] is None
+        # Verify the exporter's send_logs_async was called
+        assert mock_exporter.send_logs_async.called
 
 
 def test_project_name_reset(reset_treebeard):

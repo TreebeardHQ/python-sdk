@@ -10,19 +10,14 @@ import sys
 import threading
 import time
 import traceback
-import uuid
-import warnings
 from datetime import datetime
-from queue import Queue
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
-import requests
 from termcolor import colored
 
 from treebeardhq.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, FlushTimerWorker
 
 from .batch import LogBatch, ObjectBatch
-from .context import LoggingContext
 from .constants import (
     COMPACT_EXEC_TYPE_KEY,
     COMPACT_EXEC_VALUE_KEY,
@@ -50,6 +45,8 @@ from .constants import (
     TS_KEY,
     LogEntry,
 )
+from .context import LoggingContext
+from .exporters import TreebeardExporter
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 
 LEVEL_COLORS = {
@@ -63,35 +60,6 @@ LEVEL_COLORS = {
 
 has_warned = False
 found_api_key = False
-_send_queue = Queue()
-
-# Worker thread to process sending requests
-
-
-class LogSenderWorker(threading.Thread):
-    def __init__(self):
-        super().__init__(daemon=True)
-        self._stop_event = threading.Event()
-
-    def run(self):
-        while True:
-            send_fn = _send_queue.get()
-            if send_fn is None:  # shutdown signal
-                break
-            try:
-                send_fn()
-            except Exception as e:
-                sdk_logger.error(
-                    f"Unexpected error in log sender: {str(e)}")
-            finally:
-                _send_queue.task_done()
-
-    def stop(self):
-        self._stop_event.set()
-        _send_queue.put(None)
-
-
-_worker = LogSenderWorker()
 
 
 # Handle shutdown signals
@@ -106,9 +74,8 @@ def _handle_shutdown(sig, frame):
 
     if Treebeard._instance and Treebeard._instance._flush_timer:
         Treebeard._instance._flush_timer.stop()
-    if _worker and _worker.is_alive():
-        _worker.stop()
-        _worker.join(timeout=10)
+    if Treebeard._instance and Treebeard._instance._exporter:
+        Treebeard._instance._exporter.stop_worker()
 
     sdk_logger.info(
         f"Shutdown complete, took {round(time.time() * 1000) - curr_time} ms")
@@ -134,7 +101,6 @@ class Treebeard:
     _endpoint: Optional[str] = None
     _objects_endpoint: Optional[str] = None
     _env: Optional[str] = None
-    _worker_started = False
 
     _original_excepthook: Optional[Any] = None
     _original_threading_excepthook: Optional[Any] = None
@@ -211,7 +177,7 @@ class Treebeard:
         self._api_key = api_key if api_key else os.getenv(
             'TREEBEARD_API_KEY')
 
-        if self._api_key and type(self._api_key) != str:
+        if self._api_key and not isinstance(self._api_key, str):
             raise ValueError("API key must be a string")
 
         self._api_key = self._api_key.strip() if self._api_key else None
@@ -230,12 +196,18 @@ class Treebeard:
         self._stdout_log_level = stdout_log_level if stdout_log_level is not None else os.getenv(
             'TREEBEARD_STDOUT_LOG_LEVEL', 'INFO')
 
-        self._capture_python_logger = capture_python_logger if capture_python_logger is not None else os.getenv(
-            'TREEBEARD_CAPTURE_PYTHON_LOGGER', False)
-        self._python_logger_level = python_logger_level if python_logger_level is not None else os.getenv(
-            'TREEBEARD_PYTHON_LOGGER_LEVEL', 'DEBUG')
-        self._python_logger_name = python_logger_name if python_logger_name is not None else os.getenv(
-            'TREEBEARD_PYTHON_LOGGER_NAME', None)
+        self._capture_python_logger = (
+            capture_python_logger if capture_python_logger is not None 
+            else os.getenv('TREEBEARD_CAPTURE_PYTHON_LOGGER', False)
+        )
+        self._python_logger_level = (
+            python_logger_level if python_logger_level is not None 
+            else os.getenv('TREEBEARD_PYTHON_LOGGER_LEVEL', 'DEBUG')
+        )
+        self._python_logger_name = (
+            python_logger_name if python_logger_name is not None 
+            else os.getenv('TREEBEARD_PYTHON_LOGGER_NAME', None)
+        )
 
         self._env = os.getenv('ENV', "production")
         self._debug_mode = os.getenv(
@@ -285,6 +257,15 @@ class Treebeard:
             self._flush_timer = FlushTimerWorker(
                 treebeard_ref=self, interval=self._flush_interval)
             self._flush_timer.start()
+            
+        # Initialize exporter if we have an API key
+        if self._api_key and not self._using_fallback:
+            self._exporter = TreebeardExporter(
+                api_key=self._api_key,
+                endpoint=self._endpoint,
+                objects_endpoint=self._objects_endpoint,
+                project_name=self._project_name
+            )
 
         if self._api_key:
             sdk_logger.info(
@@ -359,11 +340,9 @@ class Treebeard:
     def reset(cls) -> None:
         global has_warned
         global found_api_key
-        global _worker
 
         has_warned = False
         found_api_key = False
-        _worker = None
         if cls._instance:
             cls._instance._api_key = None
             cls._instance._endpoint = None
@@ -385,7 +364,6 @@ class Treebeard:
     def add(self, log_entry: Dict[str, Any]) -> None:
         global found_api_key
         global has_warned
-        global _worker
 
         if self._using_fallback:
             # let's check to see if we've lazy-loaded env vars
@@ -407,6 +385,15 @@ class Treebeard:
                     'TREEBEARD_STDOUT_LOG_LEVEL', self._stdout_log_level)
 
                 self._initialized = True
+                
+                # Initialize exporter after lazy loading API key
+                if not self._exporter:
+                    self._exporter = TreebeardExporter(
+                        api_key=self._api_key,
+                        endpoint=self._endpoint,
+                        objects_endpoint=self._objects_endpoint,
+                        project_name=self._project_name
+                    )
 
                 if has_warned:
                     sdk_logger.info(
@@ -422,13 +409,6 @@ class Treebeard:
 
         if not self._using_fallback and self._batch.add(self.format_log(log_entry)):
 
-            if not Treebeard._worker_started:
-                if not _worker.is_alive():
-                    _worker = LogSenderWorker()
-                    _worker.start()
-                    sdk_logger.info(
-                        "Treebeard log worker started post-fork.")
-                Treebeard._worker_started = True
             self.flush()
 
         if self._using_fallback or self._env == "development" or self._log_to_stdout:
@@ -585,7 +565,7 @@ class Treebeard:
         trace_id = log_entry.pop(TRACE_ID_KEY_RESERVED_V2, None)
         file_path = log_entry.pop(FILE_KEY_RESERVED_V2, None)
         line_num = log_entry.pop(LINE_KEY_RESERVED_V2, None)
-        ts = log_entry.pop('ts', None)
+        log_entry.pop('ts', None)
 
         metadata = {k: v for k, v in log_entry.items() if k != 'level'}
 
@@ -614,7 +594,7 @@ class Treebeard:
             fallback_logger.log(log_level, full_message)
         else:
             # Single line format for production (better for CloudWatch, etc.)
-            timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+            time.strftime('%Y-%m-%d %H:%M:%S')
             log_info = f"[{trace_id}] {message}"
 
             if file_path and line_num:
@@ -660,8 +640,8 @@ class Treebeard:
 
         logs = self._batch.get_logs()
         count = len(logs)
-        if logs:
-            self._send_logs(logs)
+        if logs and self._exporter:
+            self._exporter.send_logs_async(logs, self._config_version, self.update_project_config)
 
         return count
 
@@ -677,7 +657,6 @@ class Treebeard:
                 "Treebeard is not initialized - object registration will be skipped")
             return
 
-        global _worker
         # Handle single object registration
         if obj is not None:
 
@@ -686,14 +665,6 @@ class Treebeard:
             if formatted_obj is not None:
                 self._attach_to_context(formatted_obj)
                 if not self._using_fallback and self._object_batch.add(formatted_obj):
-                    if not Treebeard._worker_started:
-
-                        if not _worker.is_alive():
-                            _worker = LogSenderWorker()
-                            _worker.start()
-                            sdk_logger.info(
-                                "Treebeard log worker started post-fork.")
-                        Treebeard._worker_started = True
                     self.flush_objects()
             return
 
@@ -711,13 +682,6 @@ class Treebeard:
             if formatted_obj is not None:
                 self._attach_to_context(formatted_obj)
                 if not self._using_fallback and self._object_batch.add(formatted_obj):
-                    if not Treebeard._worker_started:
-                        if not _worker.is_alive():
-                            _worker = LogSenderWorker()
-                            _worker.start()
-                            sdk_logger.info(
-                                "Treebeard log worker started post-fork.")
-                        Treebeard._worker_started = True
                     self.flush_objects()
 
     def _format_object(self, obj_data: Union[Dict[str, Any], Any]) -> Optional[Dict[str, Any]]:
@@ -844,97 +808,13 @@ class Treebeard:
 
         objects = self._object_batch.get_objects()
         count = len(objects)
-        if objects:
-            self._send_objects(objects)
+        if objects and self._exporter:
+            self._exporter.send_objects_async(
+                objects, self._config_version, self.update_project_config
+            )
 
         return count
 
-    def _send_logs(self, logs: List[Any]) -> None:
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}'
-        }
-        data = json.dumps({
-            'logs': logs,
-            'project_name': self._project_name,
-            "v": self._config_version,
-            "sdk_version": 2
-        })
-
-        def send_request():
-            max_retries = 3
-            delay = 1  # seconds
-            for attempt in range(max_retries):
-                try:
-                    response = requests.post(
-                        self._endpoint, headers=headers, data=data)
-                    if response.ok:
-                        sdk_logger.debug(
-                            f"Logs sent successfully. logs sent: {len(logs)}")
-
-                        result = response.json()
-
-                        # we get an updated config if the server has a later config version than we
-                        # sent it
-                        if isinstance(result, dict) and result.get('updated_config'):
-                            self.update_project_config(
-                                **result.get('updated_config'))
-
-                        return result
-                    else:
-                        sdk_logger.warning(
-                            f"Attempt {attempt+1} failed: {response.status_code} - {response.text}")
-                except Exception as e:
-                    sdk_logger.error("error while sending logs", exc_info=e)
-                time.sleep(delay)
-            sdk_logger.error("All attempts to send logs failed.")
-
-        _send_queue.put(send_request)
-
-    def _send_objects(self, objects: List[Dict[str, Any]]) -> None:
-        """Send object registrations to the API."""
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}'
-        }
-        data = json.dumps({
-            'objects': objects,
-            'project_name': self._project_name,
-            "v": self._config_version,
-            "sdk_version": 2
-        })
-
-        def send_request():
-            max_retries = 3
-            delay = 1  # seconds
-            for attempt in range(max_retries):
-                try:
-                    sdk_logger.warning(
-                        f"Sending objects to {self._objects_endpoint}")
-                    response = requests.post(
-                        self._objects_endpoint, headers=headers, data=data)
-                    if response.ok:
-                        sdk_logger.debug(
-                            f"Objects sent successfully. objects sent: {len(objects)}")
-
-                        result = response.json()
-
-                        # we get an updated config if the server has a later config version than we
-                        # sent it
-                        if isinstance(result, dict) and result.get('updated_config'):
-                            self.update_project_config(
-                                **result.get('updated_config'))
-
-                        return result
-                    else:
-                        sdk_logger.warning(
-                            f"Attempt {attempt+1} failed: {response.status_code} - {response.text}")
-                except Exception as e:
-                    sdk_logger.error("error while sending objects", exc_info=e)
-                time.sleep(delay)
-            sdk_logger.error("All attempts to send objects failed.")
-
-        _send_queue.put(send_request)
 
     @classmethod
     def register(cls, obj: Any = None, **kwargs: Any) -> None:
