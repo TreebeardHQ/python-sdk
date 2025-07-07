@@ -1,10 +1,8 @@
-import traceback
 from functools import wraps
 from typing import Any, Callable, Optional
 
 from .span import end_span, start_span
 from .spans import SpanKind, SpanStatus, SpanStatusCode
-from .internal_utils.fallback_logger import sdk_logger
 
 
 def treebeard_trace(name: Optional[str] = None):

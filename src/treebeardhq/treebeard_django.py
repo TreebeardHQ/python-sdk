@@ -52,7 +52,10 @@ class TreebeardDjangoMiddleware:
                         self._current_span.set_attribute("http.status_code", response.status_code)
                         # Set span status based on HTTP status
                         if response.status_code >= 400:
-                            end_span(self._current_span, SpanStatus(SpanStatusCode.ERROR, f"HTTP {response.status_code}"))
+                            end_span(
+                                self._current_span, 
+                                SpanStatus(SpanStatusCode.ERROR, f"HTTP {response.status_code}")
+                            )
                         else:
                             end_span(self._current_span, SpanStatus(SpanStatusCode.OK))
                     else:
@@ -129,9 +132,15 @@ class TreebeardDjangoMiddleware:
             if request.META.get('HTTP_REFERER'):
                 self._current_span.set_attribute("http.referer", request.META.get('HTTP_REFERER'))
             if request.META.get('HTTP_X_FORWARDED_FOR'):
-                self._current_span.set_attribute("http.x_forwarded_for", request.META.get('HTTP_X_FORWARDED_FOR'))
+                self._current_span.set_attribute(
+                    "http.x_forwarded_for", 
+                    request.META.get('HTTP_X_FORWARDED_FOR')
+                )
             if request.META.get('HTTP_X_REAL_IP'):
-                self._current_span.set_attribute("http.x_real_ip", request.META.get('HTTP_X_REAL_IP'))
+                self._current_span.set_attribute(
+                    "http.x_real_ip", 
+                    request.META.get('HTTP_X_REAL_IP')
+                )
             
             # Query parameters
             if request.GET:
@@ -151,7 +160,9 @@ class TreebeardDjangoMiddleware:
 
         except Exception as e:
             sdk_logger.error(
-                f"Error in TreebeardDjangoMiddleware.start_initial_span: {str(e)}: {traceback.format_exc()}")
+                f"Error in TreebeardDjangoMiddleware.start_initial_span: "
+                f"{str(e)}: {traceback.format_exc()}"
+            )
 
     def get_trace_name(self, request):
         """Update the trace name with the resolved URL pattern.
@@ -178,7 +189,9 @@ class TreebeardDjangoMiddleware:
 
         except Exception as e:
             sdk_logger.error(
-                f"Error in TreebeardDjangoMiddleware.update_trace_name: {str(e)}: {traceback.format_exc()}")
+                f"Error in TreebeardDjangoMiddleware.update_trace_name: "
+                f"{str(e)}: {traceback.format_exc()}"
+            )
 
     def process_response(self, request, response, exception=None):
         """Complete the span when a request ends.
@@ -201,7 +214,10 @@ class TreebeardDjangoMiddleware:
                     if hasattr(response, 'status_code'):
                         self._current_span.set_attribute("http.status_code", response.status_code)
                         if response.status_code >= 400:
-                            end_span(self._current_span, SpanStatus(SpanStatusCode.ERROR, f"HTTP {response.status_code}"))
+                            end_span(
+                                self._current_span, 
+                                SpanStatus(SpanStatusCode.ERROR, f"HTTP {response.status_code}")
+                            )
                         else:
                             end_span(self._current_span, SpanStatus(SpanStatusCode.OK))
                     else:
@@ -210,7 +226,9 @@ class TreebeardDjangoMiddleware:
 
         except Exception as e:
             sdk_logger.error(
-                f"Error in TreebeardDjangoMiddleware.process_response: {str(e)}: {traceback.format_exc()}")
+                f"Error in TreebeardDjangoMiddleware.process_response: "
+                f"{str(e)}: {traceback.format_exc()}"
+            )
 
 
 class TreebeardDjango:
@@ -273,7 +291,8 @@ class TreebeardDjango:
         sdk_logger.info("""
 To instrument your Django application with Treebeard:
 
-1. Add 'treebeardhq.treebeard_django.TreebeardDjangoMiddleware' to your MIDDLEWARE setting in settings.py:
+1. Add 'treebeardhq.treebeard_django.TreebeardDjangoMiddleware' to your MIDDLEWARE 
+   setting in settings.py:
 
 MIDDLEWARE = [
     # ... other middleware
