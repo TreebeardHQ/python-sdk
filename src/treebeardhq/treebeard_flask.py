@@ -7,6 +7,7 @@ when a request ends.
 import importlib
 import traceback
 
+from .core import Treebeard
 from .span import end_span, record_exception_on_span, start_span
 from .spans import SpanKind, SpanStatus, SpanStatusCode
 
@@ -59,24 +60,23 @@ class TreebeardFlask:
                     span_name = f"{request.method} {route_pattern}"
                     
                     # Check for distributed tracing headers
-                    parent_context = None
-                    trace_id = (
-                        request.headers.get('X-Trace-Id') or 
-                        request.headers.get('traceparent')
-                    )
-                    if trace_id:
-                        # Extract trace context from traceparent header (W3C format)
-                        # Format: version-trace_id-parent_id-flags
-                        if '-' in trace_id:
-                            parts = trace_id.split('-')
-                            if len(parts) >= 3:
-                                parent_context = parts[1] + parts[2]  # trace_id + parent_id
+                    span_context = None
+                    traceparent = request.headers.get('traceparent')
+                    if traceparent:
+                        # Parse W3C traceparent header
+                        parsed = Treebeard.parse_traceparent(traceparent)
+                        if parsed:
+                            # Establish trace context from parent
+                            span_context = Treebeard.establish_trace_context(
+                                trace_id=parsed['trace_id'],
+                                parent_span_id=parsed['parent_id']
+                            )
                     
                     # Start span for the HTTP request
                     span = start_span(
                         name=span_name,
                         kind=SpanKind.SERVER,
-                        parent_context=parent_context
+                        span_context=span_context
                     )
                     
                     # Set HTTP attributes

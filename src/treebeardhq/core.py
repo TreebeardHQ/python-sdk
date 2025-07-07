@@ -48,6 +48,7 @@ from .constants import (
 from .context import LoggingContext
 from .exporters import TreebeardExporter
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
+from .spans import SpanContext
 
 LEVEL_COLORS = {
     'trace': 'white',
@@ -868,6 +869,78 @@ class Treebeard:
 
         return count
 
+    @staticmethod
+    def parse_traceparent(traceparent: str) -> Optional[Dict[str, str]]:
+        """Parse W3C traceparent header into its components.
+        
+        The traceparent header format is: version-trace_id-parent_id-flags
+        
+        Args:
+            traceparent: The traceparent header value
+            
+        Returns:
+            Dictionary with 'trace_id', 'parent_id', and 'flags', or None if invalid
+        """
+        if not traceparent or not isinstance(traceparent, str):
+            return None
+            
+        parts = traceparent.strip().split('-')
+        if len(parts) != 4:
+            return None
+            
+        version, trace_id, parent_id, flags = parts
+        
+        # Validate format
+        if len(version) != 2 or len(trace_id) != 32 or len(parent_id) != 16 or len(flags) != 2:
+            return None
+            
+        # Validate hex format
+        try:
+            int(version, 16)
+            int(trace_id, 16)
+            int(parent_id, 16)
+            int(flags, 16)
+        except ValueError:
+            return None
+            
+        return {
+            'version': version,
+            'trace_id': trace_id,
+            'parent_id': parent_id,
+            'flags': flags
+        }
+
+    @staticmethod
+    def establish_trace_context(
+        trace_id: str, 
+        parent_span_id: str, 
+        clear_existing: bool = True
+    ) -> SpanContext:
+        """Establish a trace context from incoming distributed tracing headers.
+        
+        This method sets up the logging context with the proper trace_id and
+        creates a span context that can be used to start child spans.
+        
+        Args:
+            trace_id: The trace ID from the parent request
+            parent_span_id: The span ID of the parent span
+            clear_existing: Whether to clear existing context first
+            
+        Returns:
+            SpanContext that can be used to start child spans
+        """
+        if clear_existing:
+            LoggingContext.clear()
+            LoggingContext.clear_span_stack()
+            
+        # Create a span context representing the remote parent
+        span_context = SpanContext(
+            trace_id=trace_id,
+            span_id=parent_span_id,
+            parent_span_id=None  # This is the remote parent
+        )
+        
+        return span_context
 
     @classmethod
     def register(cls, obj: Any = None, **kwargs: Any) -> None:

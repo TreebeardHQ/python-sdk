@@ -6,14 +6,14 @@ from contextlib import contextmanager
 from typing import Any, Dict, Generator, Optional
 
 from .context import LoggingContext
-from .spans import Span, SpanKind, SpanStatus, SpanStatusCode, generate_span_id, generate_trace_id
+from .spans import Span, SpanContext, SpanKind, SpanStatus, SpanStatusCode, generate_span_id, generate_trace_id
 
 
 def start_span(
     name: str,
     kind: SpanKind = SpanKind.INTERNAL,
     attributes: Optional[Dict[str, Any]] = None,
-    parent_context: Optional[str] = None
+    span_context: Optional[SpanContext] = None
 ) -> Span:
     """Start a new span.
     
@@ -21,7 +21,7 @@ def start_span(
         name: The name of the span
         kind: The kind of span (INTERNAL, SERVER, CLIENT, etc.)
         attributes: Optional attributes to set on the span
-        parent_context: Optional parent span ID to use instead of current context
+        span_context: Optional span context for distributed tracing
         
     Returns:
         The newly created span
@@ -29,11 +29,10 @@ def start_span(
     # Get parent span context
     current_span = LoggingContext.get_current_span()
     
-    if parent_context:
-        # Use explicit parent context
-        parent_span_id = parent_context
-        # Try to get trace_id from current span, otherwise generate new one
-        trace_id = current_span.trace_id if current_span else generate_trace_id()
+    if span_context:
+        # Use explicit span context from distributed tracing
+        parent_span_id = span_context.span_id
+        trace_id = span_context.trace_id
     elif current_span:
         # Use current span as parent
         parent_span_id = current_span.span_id

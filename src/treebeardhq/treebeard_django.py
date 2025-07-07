@@ -6,8 +6,9 @@ when a request ends.
 """
 import traceback
 
-from treebeardhq.span import end_span, start_span
-from treebeardhq.spans import SpanKind, SpanStatus, SpanStatusCode
+from .core import Treebeard
+from .span import end_span, start_span
+from .spans import SpanKind, SpanStatus, SpanStatusCode
 
 from .internal_utils.fallback_logger import sdk_logger
 
@@ -94,21 +95,23 @@ class TreebeardDjangoMiddleware:
             span_name = f"{request.method} {request.path}"
             
             # Check for distributed tracing headers
-            parent_context = None
-            trace_id = request.META.get('HTTP_X_TRACE_ID') or request.META.get('HTTP_TRACEPARENT')
-            if trace_id:
-                # Extract trace context from traceparent header (W3C format)
-                # Format: version-trace_id-parent_id-flags
-                if '-' in trace_id:
-                    parts = trace_id.split('-')
-                    if len(parts) >= 3:
-                        parent_context = parts[1] + parts[2]  # trace_id + parent_id
+            span_context = None
+            traceparent = request.META.get('HTTP_TRACEPARENT')
+            if traceparent:
+                # Parse W3C traceparent header
+                parsed = Treebeard.parse_traceparent(traceparent)
+                if parsed:
+                    # Establish trace context from parent
+                    span_context = Treebeard.establish_trace_context(
+                        trace_id=parsed['trace_id'],
+                        parent_span_id=parsed['parent_id']
+                    )
             
             # Start span for the HTTP request
             self._current_span = start_span(
                 name=span_name,
                 kind=SpanKind.SERVER,
-                parent_context=parent_context
+                span_context=span_context
             )
             
             # Set HTTP attributes
