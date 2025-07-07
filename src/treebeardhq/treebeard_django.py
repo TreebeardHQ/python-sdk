@@ -6,8 +6,6 @@ when a request ends.
 """
 import traceback
 
-from treebeardhq.context import LoggingContext
-from treebeardhq.log import Log
 from treebeardhq.span import end_span, start_span
 from treebeardhq.spans import SpanKind, SpanStatus, SpanStatusCode
 
@@ -26,54 +24,6 @@ class TreebeardDjangoMiddleware:
         self.get_response = get_response
         self._current_span = None
 
-    @staticmethod
-    def _get_django_request_data(request):
-        """Extract relevant data from Django request object.
-
-        Args:
-            request: Django HttpRequest object
-
-        Returns:
-            dict: Dictionary containing request data
-        """
-        try:
-            request_data = {
-                "remote_addr": request.META.get('REMOTE_ADDR'),
-                "referrer": request.META.get('HTTP_REFERER'),
-                "user_agent": request.META.get('HTTP_USER_AGENT'),
-                "content_type": request.content_type,
-                "content_length": request.META.get('CONTENT_LENGTH'),
-            }
-
-            # Headers
-            request_data["header_referer"] = request.META.get('HTTP_REFERER')
-            request_data["header_x_forwarded_for"] = request.META.get(
-                'HTTP_X_FORWARDED_FOR')
-            request_data["header_x_real_ip"] = request.META.get(
-                'HTTP_X_REAL_IP')
-
-            # Query parameters
-            for key, value in request.GET.items():
-                request_data[f"query_param_{key}"] = value
-
-            # POST/PUT/PATCH body data
-            if request.method in ['POST', 'PUT', 'PATCH']:
-                if request.content_type == 'application/json':
-                    try:
-                        import json
-                        request_data["body_json"] = json.loads(
-                            request.body.decode('utf-8'))
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        request_data["body_json"] = {}
-                elif request.content_type == 'application/x-www-form-urlencoded':
-                    request_data["body_form"] = dict(request.POST.items())
-
-            return request_data
-
-        except Exception as e:
-            sdk_logger.error(
-                f"Error in TreebeardDjangoMiddleware._get_django_request_data: {str(e)}: {traceback.format_exc()}")
-            return {}
 
     def __call__(self, request):
         """Process the request and response.
@@ -108,9 +58,6 @@ class TreebeardDjangoMiddleware:
                     else:
                         end_span(self._current_span, SpanStatus(SpanStatusCode.OK))
                 
-                # Legacy trace support
-                LoggingContext.update_trace_name(trace_name)
-                Log.complete_success()
 
                 return response
             except Exception as e:
@@ -124,9 +71,6 @@ class TreebeardDjangoMiddleware:
                     })
                     end_span(self._current_span, SpanStatus(SpanStatusCode.ERROR, str(e)))
                 
-                # Legacy trace support
-                LoggingContext.update_trace_name(trace_name)
-                Log.complete_error(error=e)
                 raise
 
         except Exception:
@@ -204,9 +148,6 @@ class TreebeardDjangoMiddleware:
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         pass
             
-            # Legacy trace support
-            request_data = self._get_django_request_data(request)
-            Log.start(name=span_name, request_data=request_data)
 
         except Exception as e:
             sdk_logger.error(
@@ -266,11 +207,6 @@ class TreebeardDjangoMiddleware:
                     else:
                         end_span(self._current_span, SpanStatus(SpanStatusCode.OK))
             
-            # Legacy trace support
-            if exception:
-                Log.complete_error(error=exception)
-            else:
-                Log.complete_success()
 
         except Exception as e:
             sdk_logger.error(

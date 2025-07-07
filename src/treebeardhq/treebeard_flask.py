@@ -7,7 +7,6 @@ when a request ends.
 import importlib
 import traceback
 
-from treebeardhq.log import Log
 from treebeardhq.span import end_span, start_span
 from treebeardhq.spans import SpanKind, SpanStatus, SpanStatusCode
 
@@ -122,37 +121,6 @@ class TreebeardFlask:
                             if json_data:
                                 span.set_attribute("http.request.body.json", str(json_data))
                     
-                    # Also start the legacy trace for backward compatibility
-                    request_data = {
-                        "remote_addr": request.remote_addr,
-                        "referrer": request.referrer,
-                        "user_agent": request.user_agent.string if request.user_agent else None,
-                        "user_agent_platform": (
-                            request.user_agent.platform if request.user_agent else None
-                        ),
-                        "user_agent_browser": (
-                            request.user_agent.browser if request.user_agent else None
-                        ),
-                        "user_agent_version": (
-                            request.user_agent.version if request.user_agent else None
-                        ),
-                        "user_agent_language": (
-                            request.user_agent.language if request.user_agent else None
-                        ),
-                    }
-                    
-                    # headers
-                    request_data["header_referer"] = request.headers.get("Referer")
-                    request_data["header_x_forwarded_for"] = request.headers.get("X-Forwarded-For")
-                    request_data["header_x_real_ip"] = request.headers.get("X-Real-IP")
-                    
-                    for key, value in request.args.to_dict(flat=True).items():
-                        request_data[f"query_param_{key}"] = value
-                    
-                    if request.method in ['POST', 'PUT', 'PATCH']:
-                        request_data["body_json"] = request.get_json(silent=True) or {}
-                    
-                    Log.start(name=span_name, request_data=request_data)
                     
                 except Exception as e:
                     sdk_logger.error(
@@ -178,11 +146,6 @@ class TreebeardFlask:
                             # Set success status
                             end_span(current_span, SpanStatus(SpanStatusCode.OK))
                     
-                    # Also complete the legacy trace
-                    if exc:
-                        Log.complete_error(error=exc)
-                    else:
-                        Log.complete_success()
                     
                     app._treebeard_instrumented = True
                 except Exception as e:

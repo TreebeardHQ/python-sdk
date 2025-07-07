@@ -2,10 +2,9 @@ import traceback
 from functools import wraps
 from typing import Any, Callable, Optional
 
-from .context import LoggingContext
-from .log import Log, sdk_logger
 from .span import end_span, start_span
 from .spans import SpanKind, SpanStatus, SpanStatusCode
+from .internal_utils.fallback_logger import sdk_logger
 
 
 def treebeard_trace(name: Optional[str] = None):
@@ -56,8 +55,6 @@ def treebeard_trace(name: Optional[str] = None):
                     if safe_kwargs:
                         span.set_attribute("function.kwargs", str(safe_kwargs))
                 
-                # Legacy trace support
-                Log.start(name=span_name, data={"args": args}, **kwargs)
                 
                 # Execute function
                 result = func(*args, **kwargs)
@@ -69,9 +66,8 @@ def treebeard_trace(name: Optional[str] = None):
                     if isinstance(result, (str, int, float, bool)):
                         span.set_attribute("function.result", str(result))
                 
-                # Complete span and legacy trace with success
+                # Complete span with success
                 end_span(span, SpanStatus(SpanStatusCode.OK))
-                Log.complete_success(result=result)
                 
                 return result
                 
@@ -84,16 +80,8 @@ def treebeard_trace(name: Optional[str] = None):
                     })
                     end_span(span, SpanStatus(SpanStatusCode.ERROR, str(e)))
                 
-                # Complete legacy trace with error
-                Log.complete_error(error=e)
                 raise  # re-raises the same exception, with full traceback
                 
-            finally:
-                try:
-                    LoggingContext.clear()
-                except Exception as e:
-                    sdk_logger.error(
-                        f"Error in Log.clear : {str(e)}: {traceback.format_exc()}")
         return wrapper
 
     return decorator
