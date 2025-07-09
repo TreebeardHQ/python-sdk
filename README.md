@@ -19,7 +19,6 @@ Treebeard.init(
     endpoint="https://your-logging-endpoint.com/logs"
 )
 # Start a trace context
-trace_id = Log.start("image-processing")
 
 try:
     # Log different severity levels with optional metadata
@@ -36,9 +35,7 @@ try:
 except Exception as e:
     Log.error("Processing failed", error=str(e))
 
-finally:
-    # End the trace context
-    Log.end()
+
 ```
 
 ## Logging Levels
@@ -73,14 +70,12 @@ Trace contexts help you group related logs together:
 
 ```python
 # Start a new trace context
-trace_id = Log.start("payment-processing")
 
 # All logs within this context will include the trace ID
 Log.info("Processing payment")
 Log.debug("Validating card details")
 
-# End the trace context when done
-Log.end()
+
 ```
 
 ## Configuration Options

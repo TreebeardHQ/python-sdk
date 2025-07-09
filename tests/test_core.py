@@ -109,6 +109,7 @@ def test_project_name_initialization(reset_treebeard):
             api_key="test-key",
             endpoint="http://test.com",
             objects_endpoint="http://test.com",
+            spans_endpoint="http://test.com",
             project_name=project_name
         )
 
@@ -159,6 +160,7 @@ def test_project_name_none_when_not_provided(reset_treebeard):
             api_key="test-key",
             endpoint="http://test.com",
             objects_endpoint="http://test.com",
+            spans_endpoint="http://test.com",
             project_name=None
         )
 

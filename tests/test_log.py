@@ -28,42 +28,6 @@ def treebeard():
     LoggingContext.clear()
 
 
-def test_start_creates_trace_context():
-    """Test that start() creates a new trace context with correct data."""
-    trace_id = Log.start("test-trace")
-
-    assert trace_id.startswith("T")  # Trace ID format check
-    assert len(trace_id) == 33  # "T" + 32 char UUID
-
-    context = LoggingContext.get_all()
-    assert context[TRACE_ID_KEY_RESERVED_V2] == trace_id
-    assert context["tb_rv2_trace_name"] == "test-trace"
-
-
-def test_end_clears_context():
-    """Test that end() clears the trace context."""
-    Log.start("test-trace")
-    Log.end()
-
-    assert LoggingContext.get_all() == {}
-
-
-def test_log_with_context(treebeard, mocker):
-    """Test logging with context data."""
-    mock_add = mocker.patch.object(treebeard, 'add')
-
-    trace_id = Log.start("test-trace")
-    Log.info("Test message")
-    assert mock_add.call_count == 2  # Assert it was called twice
-
-    log_data = mock_add.call_args_list[1][0][0]
-    print(log_data)
-    assert log_data[MESSAGE_KEY_RESERVED_V2] == "Test message"
-    assert log_data[LEVEL_KEY_RESERVED_V2] == "info"
-    assert log_data[TRACE_ID_KEY_RESERVED_V2] == trace_id
-    assert log_data[TRACE_NAME_KEY_RESERVED_V2] == "test-trace"
-
-
 def test_log_with_data_dict(treebeard, mocker):
     """Test logging with additional data dictionary."""
     mock_add = mocker.patch.object(treebeard, 'add')
@@ -126,19 +90,6 @@ def test_log_levels(treebeard, mocker):
         mock_add.reset_mock()
 
 
-def test_nested_contexts():
-    """Test that starting a new context clears the previous one."""
-    first_trace = Log.start("first")
-    first_context = LoggingContext.get_all()
-
-    second_trace = Log.start("second")
-    second_context = LoggingContext.get_all()
-
-    assert first_trace != second_trace
-    assert first_context != second_context
-    assert second_context[TRACE_NAME_KEY_RESERVED_V2] == "second"
-
-
 @pytest.fixture
 def mock_colored():
     with patch('treebeardhq.core.colored') as mock:
@@ -152,44 +103,6 @@ def captured_logs(caplog):
     """Fixture to capture logs with proper level."""
     caplog.set_level(logging.DEBUG)
     return caplog
-
-
-def test_fallback_logging(captured_logs, mock_colored):
-    """Test that logs are correctly sent to the fallback logger."""
-    # Reset and initialize without API key
-    Treebeard.reset()
-    Treebeard.init()
-
-    # Clear any initialization messages
-    captured_logs.clear()
-
-    with patch("logging.StreamHandler.emit") as mock_emit:
-
-        # Start a trace context
-        Log.start("test_context")
-
-        # Test different log levels
-        Log.debug("Debug message", extra_field="debug_value")
-        Log.info("Info message", extra_field="info_value")
-        Log.warning("Warning message", extra_field="warning_value")
-        Log.error("Error message", extra_field="error_value")
-
-        # Verify logs were captured with correct levels
-        assert mock_emit.call_count == 4
-        log_message = mock_emit.call_args_list[1][0][0].msg
-        # no debug message
-
-        # Check info message
-        assert "Info message" in log_message
-
-        log_message = mock_emit.call_args_list[2][0][0].msg
-
-        # Check warning message
-        assert "Warning message" in log_message
-
-        # Check error message
-        log_message = mock_emit.call_args_list[3][0][0].msg
-        assert "Error message" in log_message
 
 
 def test_fallback_metadata_formatting(captured_logs, mock_colored):
@@ -412,31 +325,6 @@ def test_treebeard_init_with_python_logger_capture():
     Treebeard.reset()
 
 
-def test_python_logger_forwarding_with_trace_context(treebeard, mocker):
-    """Test that Python logger messages capture the current trace_id."""
-    mock_add = mocker.patch.object(treebeard, 'add')
-
-    Log.enable_python_logger_forwarding()
-
-    # Start a trace context
-    trace_id = Log.start("test_trace")
-
-    # Log a message within the trace context
-    test_logger = logging.getLogger("trace_test_logger")
-    test_logger.info("Message within trace context")
-
-    # Verify the message captured the trace_id
-    mock_add.assert_called()
-    log_data = mock_add.call_args[0][0]
-    assert log_data[MESSAGE_KEY_RESERVED_V2] == "Message within trace context"
-    assert log_data[TRACE_ID_KEY_RESERVED_V2] == trace_id
-    assert log_data[SOURCE_KEY_RESERVED_V2] == "python_logger"
-
-    # End the trace and clean up
-    Log.end()
-    Log.disable_python_logger_forwarding()
-
-
 def test_python_logger_forwarding_without_trace_context(treebeard, mocker):
     """Test that Python logger messages get auto-assigned trace_id when no context exists."""
     mock_add = mocker.patch.object(treebeard, 'add')
@@ -456,46 +344,7 @@ def test_python_logger_forwarding_without_trace_context(treebeard, mocker):
     assert log_data[MESSAGE_KEY_RESERVED_V2] == "Message without trace context"
     assert TRACE_ID_KEY_RESERVED_V2 in log_data
     assert log_data[TRACE_ID_KEY_RESERVED_V2] is not None
-    assert log_data[TRACE_ID_KEY_RESERVED_V2].startswith(
-        "T")  # Trace ID format
-    assert len(log_data[TRACE_ID_KEY_RESERVED_V2]) == 33  # "T" + 32 char UUID
 
-    Log.disable_python_logger_forwarding()
+    assert len(log_data[TRACE_ID_KEY_RESERVED_V2]) == 32  # 32 char UUID
 
-
-def test_python_logger_inherits_existing_trace_context(treebeard, mocker):
-    """Test that multiple Python logger messages within same trace share trace_id."""
-    mock_add = mocker.patch.object(treebeard, 'add')
-
-    Log.enable_python_logger_forwarding()
-
-    # Start a trace context
-    trace_id = Log.start("shared_trace")
-
-    # Log multiple messages within the same trace context
-    test_logger = logging.getLogger("shared_trace_logger")
-    test_logger.info("First message in trace")
-    test_logger.warning("Second message in trace")
-    test_logger.error("Third message in trace")
-
-    # Verify all messages share the same trace_id
-    # Note: Log.start() also creates a log entry, so we expect 4 total calls
-    assert mock_add.call_count == 4
-    calls = mock_add.call_args_list
-
-    # Skip the first call which is from Log.start("shared_trace")
-    python_logger_calls = calls[1:]  # Get the last 3 calls
-
-    for _i, call in enumerate(python_logger_calls):
-        log_data = call[0][0]
-        assert log_data[TRACE_ID_KEY_RESERVED_V2] == trace_id
-        assert log_data[SOURCE_KEY_RESERVED_V2] == "python_logger"
-
-    # Verify the messages are different
-    assert python_logger_calls[0][0][0][MESSAGE_KEY_RESERVED_V2] == "First message in trace"
-    assert python_logger_calls[1][0][0][MESSAGE_KEY_RESERVED_V2] == "Second message in trace"
-    assert python_logger_calls[2][0][0][MESSAGE_KEY_RESERVED_V2] == "Third message in trace"
-
-    # End the trace and clean up
-    Log.end()
     Log.disable_python_logger_forwarding()

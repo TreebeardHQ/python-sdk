@@ -34,25 +34,6 @@ def test_basic_functionality():
     print("Done!")
 
 
-def test_with_trace_context():
-    """Test Python logger forwarding within a trace context."""
-    print("\n=== Testing Python Logger with Trace Context ===")
-
-    # Start a trace
-    trace_id = Log.start("test_trace")
-    print(f"Started trace: {trace_id}")
-
-    # Log some messages
-    logger = logging.getLogger("app.service")
-    logger.info("Processing user request")
-    logger.debug("Database query executed", extra={"query_time": 0.045})
-
-    # End the trace
-    Log.complete_success()
-
-    print("Trace completed!")
-
-
 def test_exception_handling():
     """Test Python logger forwarding with exceptions."""
     print("\n=== Testing Exception Handling ===")

@@ -17,7 +17,7 @@ from termcolor import colored
 
 from treebeardhq.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, FlushTimerWorker
 
-from .batch import LogBatch, ObjectBatch
+from .batch import LogBatch, ObjectBatch, SpanBatch
 from .constants import (
     COMPACT_EXEC_TYPE_KEY,
     COMPACT_EXEC_VALUE_KEY,
@@ -27,6 +27,7 @@ from .constants import (
     COMPACT_LINE_KEY,
     COMPACT_MESSAGE_KEY,
     COMPACT_SOURCE_KEY,
+    COMPACT_SPAN_ID_KEY,
     COMPACT_TRACE_ID_KEY,
     COMPACT_TRACE_NAME_KEY,
     COMPACT_TRACEBACK_KEY,
@@ -39,6 +40,7 @@ from .constants import (
     LINE_KEY_RESERVED_V2,
     MESSAGE_KEY_RESERVED_V2,
     SOURCE_KEY_RESERVED_V2,
+    SPAN_ID_KEY_RESERVED_V2,
     TRACE_ID_KEY_RESERVED_V2,
     TRACE_NAME_KEY_RESERVED_V2,
     TRACEBACK_KEY_RESERVED_V2,
@@ -48,6 +50,7 @@ from .constants import (
 from .context import LoggingContext
 from .exporters import TreebeardExporter
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
+from .spans import SpanContext
 
 LEVEL_COLORS = {
     'trace': 'white',
@@ -67,10 +70,12 @@ found_api_key = False
 
 def _handle_shutdown(sig, frame):
     curr_time = round(time.time() * 1000)
-    sdk_logger.info("Shutdown signal received, flushing logs and objects...")
+    sdk_logger.info(
+        "Shutdown signal received, flushing logs, objects, and spans...")
     treebeard_instance = Treebeard()
     treebeard_instance.flush()
     treebeard_instance.flush_objects()
+    treebeard_instance.flush_spans()
 
     if Treebeard._instance and Treebeard._instance._flush_timer:
         Treebeard._instance._flush_timer.stop()
@@ -88,7 +93,6 @@ signal.signal(signal.SIGTERM, _handle_shutdown)
 DEFAULT_BATCH_SIZE = 500
 DEFAULT_BATCH_AGE = 30.0
 DEFAULT_API_URL = 'https://api.treebeardhq.com/logs/batch'
-DEFAULT_OBJECTS_API_URL = 'https://api.treebeardhq.com/objects/register'
 
 
 class Treebeard:
@@ -98,8 +102,10 @@ class Treebeard:
     _debug_mode: bool = False
     _batch: Optional[LogBatch] = None
     _object_batch: Optional[ObjectBatch] = None
+    _span_batch: Optional[SpanBatch] = None
     _endpoint: Optional[str] = None
     _objects_endpoint: Optional[str] = None
+    _spans_endpoint: Optional[str] = None
     _env: Optional[str] = None
 
     _original_excepthook: Optional[Any] = None
@@ -110,6 +116,7 @@ class Treebeard:
     _flush_timer: Optional[FlushTimerWorker] = None
 
     _config_version: Optional[int] = None
+    _exporter: Optional[TreebeardExporter] = None
 
     _initialized = False
 
@@ -186,7 +193,9 @@ class Treebeard:
             'TREEBEARD_API_URL', DEFAULT_API_URL)
         self._objects_endpoint = (
             self._endpoint.replace('/logs/batch', '/objects/register')
-            if self._endpoint else DEFAULT_OBJECTS_API_URL
+        )
+        self._spans_endpoint = (
+            self._endpoint.replace('/logs/batch', '/spans/batch')
         )
         self._capture_stdout = capture_stdout if capture_stdout is not None else os.getenv(
             'TREEBEARD_CAPTURE_STDOUT', False)
@@ -197,15 +206,15 @@ class Treebeard:
             'TREEBEARD_STDOUT_LOG_LEVEL', 'INFO')
 
         self._capture_python_logger = (
-            capture_python_logger if capture_python_logger is not None 
+            capture_python_logger if capture_python_logger is not None
             else os.getenv('TREEBEARD_CAPTURE_PYTHON_LOGGER', False)
         )
         self._python_logger_level = (
-            python_logger_level if python_logger_level is not None 
+            python_logger_level if python_logger_level is not None
             else os.getenv('TREEBEARD_PYTHON_LOGGER_LEVEL', 'DEBUG')
         )
         self._python_logger_name = (
-            python_logger_name if python_logger_name is not None 
+            python_logger_name if python_logger_name is not None
             else os.getenv('TREEBEARD_PYTHON_LOGGER_NAME', None)
         )
 
@@ -251,19 +260,21 @@ class Treebeard:
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
         self._object_batch = ObjectBatch(
             max_size=batch_size, max_age=batch_age)
+        self._span_batch = SpanBatch(max_size=batch_size, max_age=batch_age)
         self._using_fallback = not bool(self._api_key)
 
         if self._flush_timer is None:
             self._flush_timer = FlushTimerWorker(
                 treebeard_ref=self, interval=self._flush_interval)
             self._flush_timer.start()
-            
+
         # Initialize exporter if we have an API key
         if self._api_key and not self._using_fallback:
             self._exporter = TreebeardExporter(
                 api_key=self._api_key,
                 endpoint=self._endpoint,
                 objects_endpoint=self._objects_endpoint,
+                spans_endpoint=self._spans_endpoint,
                 project_name=self._project_name
             )
 
@@ -349,6 +360,7 @@ class Treebeard:
             cls._instance._objects_endpoint = None
             cls._instance._batch = None
             cls._instance._object_batch = None
+            cls._instance._span_batch = None
             cls._instance._using_fallback = True
             cls._instance._log_to_stdout = False
             cls._instance._debug_mode = False
@@ -374,6 +386,12 @@ class Treebeard:
                 self._env = os.getenv('ENV', self._env)
                 self._endpoint = os.getenv(
                     'TREEBEARD_API_URL', self._endpoint)
+                self._spans_endpoint = (
+                    self._endpoint.replace('/logs/batch', '/spans/batch')
+                )
+                self._objects_endpoint = (
+                    self._endpoint.replace('/logs/batch', '/objects/register')
+                )
 
                 self._api_key = key.strip()
                 self._log_to_stdout = os.getenv(
@@ -385,13 +403,14 @@ class Treebeard:
                     'TREEBEARD_STDOUT_LOG_LEVEL', self._stdout_log_level)
 
                 self._initialized = True
-                
+
                 # Initialize exporter after lazy loading API key
                 if not self._exporter:
                     self._exporter = TreebeardExporter(
                         api_key=self._api_key,
                         endpoint=self._endpoint,
                         objects_endpoint=self._objects_endpoint,
+                        spans_endpoint=self._spans_endpoint,
                         project_name=self._project_name
                     )
 
@@ -428,6 +447,8 @@ class Treebeard:
             TS_KEY, round(time.time() * 1000))
         result[COMPACT_TRACE_ID_KEY] = log_entry.pop(
             TRACE_ID_KEY_RESERVED_V2, '')
+        result[COMPACT_SPAN_ID_KEY] = log_entry.pop(
+            SPAN_ID_KEY_RESERVED_V2, '')
         result[COMPACT_MESSAGE_KEY] = log_entry.pop(
             MESSAGE_KEY_RESERVED_V2, '')
         result[COMPACT_LEVEL_KEY] = log_entry.pop(
@@ -471,6 +492,11 @@ class Treebeard:
         trace_id = log_entry.pop(TRACE_ID_KEY_RESERVED_V2, '')
         if trace_id:
             otel_log["TraceId"] = trace_id
+
+        # Span context
+        span_id = log_entry.pop(SPAN_ID_KEY_RESERVED_V2, '')
+        if span_id:
+            otel_log["SpanId"] = span_id
 
         # Severity
         level = log_entry.pop(LEVEL_KEY_RESERVED_V2, 'info')
@@ -563,6 +589,7 @@ class Treebeard:
         message = log_entry.pop(MESSAGE_KEY_RESERVED_V2, '')
         error = log_entry.pop('error', None)
         trace_id = log_entry.pop(TRACE_ID_KEY_RESERVED_V2, None)
+        span_id = log_entry.pop(SPAN_ID_KEY_RESERVED_V2, None)
         file_path = log_entry.pop(FILE_KEY_RESERVED_V2, None)
         line_num = log_entry.pop(LINE_KEY_RESERVED_V2, None)
         log_entry.pop('ts', None)
@@ -587,7 +614,12 @@ class Treebeard:
                 metadata_str = f"{colored(formatted_metadata, 'dark_grey')}"
 
             color = LEVEL_COLORS.get(level, 'white')
-            formatted_message = colored(f"[{trace_id}] {message}", color)
+            if span_id:
+                formatted_message = colored(
+                    f"[{trace_id}:{span_id}] {message}", color)
+            else:
+                formatted_message = colored(
+                    f"[{trace_id}] {message}", color)
             full_message = formatted_message + \
                 ('\n' + metadata_str if metadata_str else '')
 
@@ -595,7 +627,10 @@ class Treebeard:
         else:
             # Single line format for production (better for CloudWatch, etc.)
             time.strftime('%Y-%m-%d %H:%M:%S')
-            log_info = f"[{trace_id}] {message}"
+            if span_id:
+                log_info = f"[{trace_id}:{span_id}] {message}"
+            else:
+                log_info = f"[{trace_id}] {message}"
 
             if file_path and line_num:
                 log_info += f" ({os.path.basename(file_path)}:{line_num})"
@@ -641,7 +676,8 @@ class Treebeard:
         logs = self._batch.get_logs()
         count = len(logs)
         if logs and self._exporter:
-            self._exporter.send_logs_async(logs, self._config_version, self.update_project_config)
+            self._exporter.send_logs_async(
+                logs, self._config_version, self.update_project_config)
 
         return count
 
@@ -815,6 +851,119 @@ class Treebeard:
 
         return count
 
+    def add_span(self, span) -> None:
+        """Add a span to the span batch.
+
+        Args:
+            span: The span to add to the batch
+        """
+        if not self._initialized:
+            return
+
+        if not self._using_fallback and self._span_batch:
+            if self._span_batch.add(span):
+                if not self._exporter:
+                    self._exporter = TreebeardExporter(
+                        api_key=self._api_key,
+                        endpoint=self._endpoint,
+                        objects_endpoint=self._objects_endpoint,
+                        spans_endpoint=self._spans_endpoint,
+                        project_name=self._project_name
+                    )
+                self._exporter.start_worker()
+                self.flush_spans()
+
+    def flush_spans(self) -> int:
+        """Flush all pending spans.
+
+        Returns:
+            Number of spans flushed
+        """
+        if not self._initialized:
+            raise RuntimeError(
+                "Treebeard must be initialized before flushing spans")
+
+        spans = self._span_batch.get_spans()
+        count = len(spans)
+        if spans and self._exporter:
+            self._exporter.send_spans_async(
+                spans, self._config_version, self.update_project_config
+            )
+
+        return count
+
+    @staticmethod
+    def parse_traceparent(traceparent: str) -> Optional[Dict[str, str]]:
+        """Parse W3C traceparent header into its components.
+
+        The traceparent header format is: version-trace_id-parent_id-flags
+
+        Args:
+            traceparent: The traceparent header value
+
+        Returns:
+            Dictionary with 'trace_id', 'parent_id', and 'flags', or None if invalid
+        """
+        if not traceparent or not isinstance(traceparent, str):
+            return None
+
+        parts = traceparent.strip().split('-')
+        if len(parts) != 4:
+            return None
+
+        version, trace_id, parent_id, flags = parts
+
+        # Validate format
+        if len(version) != 2 or len(trace_id) != 32 or len(parent_id) != 16 or len(flags) != 2:
+            return None
+
+        # Validate hex format
+        try:
+            int(version, 16)
+            int(trace_id, 16)
+            int(parent_id, 16)
+            int(flags, 16)
+        except ValueError:
+            return None
+
+        return {
+            'version': version,
+            'trace_id': trace_id,
+            'parent_id': parent_id,
+            'flags': flags
+        }
+
+    @staticmethod
+    def establish_trace_context(
+        trace_id: str,
+        parent_span_id: str,
+        clear_existing: bool = True
+    ) -> SpanContext:
+        """Establish a trace context from incoming distributed tracing headers.
+
+        This method sets up the logging context with the proper trace_id and
+        creates a span context that can be used to start child spans.
+
+        Args:
+            trace_id: The trace ID from the parent request
+            parent_span_id: The span ID of the parent span
+            clear_existing: Whether to clear existing context first
+
+        Returns:
+            SpanContext that can be used to start child spans
+        """
+        if clear_existing:
+            LoggingContext.clear()
+            LoggingContext.clear_span_stack()
+
+        # Create a span context representing the remote parent
+        span_context = SpanContext(
+            trace_id=trace_id,
+            span_id=parent_span_id,
+            parent_span_id=None  # This is the remote parent
+        )
+
+        return span_context
 
     @classmethod
     def register(cls, obj: Any = None, **kwargs: Any) -> None:
