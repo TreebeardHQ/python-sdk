@@ -7,6 +7,7 @@ TS_KEY = "ts"
 
 # v2 reserved keys
 TRACE_ID_KEY_RESERVED_V2 = "tb_rv2_trace_id"
+SPAN_ID_KEY_RESERVED_V2 = "tb_rv2_span_id"
 MESSAGE_KEY_RESERVED_V2 = "tb_rv2_message"
 LEVEL_KEY_RESERVED_V2 = "tb_rv2_level"
 ERROR_KEY_RESERVED_V2 = "tb_rv2_error"
@@ -22,6 +23,7 @@ EXEC_VALUE_RESERVED_V2 = "tb_rv2_exec_value"
 
 
 COMPACT_TRACE_ID_KEY = "tid"
+COMPACT_SPAN_ID_KEY = "sid"
 COMPACT_MESSAGE_KEY = "msg"
 COMPACT_LEVEL_KEY = "lvl"
 COMPACT_TS_KEY = "ts"

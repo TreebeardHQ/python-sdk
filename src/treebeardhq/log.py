@@ -25,6 +25,7 @@ from .constants import (
     LINE_KEY_RESERVED_V2,
     MESSAGE_KEY_RESERVED_V2,
     SOURCE_KEY_RESERVED_V2,
+    SPAN_ID_KEY_RESERVED_V2,
     TAGS_KEY,
     TRACE_COMPLETE_ERROR_MARKER,
     TRACE_COMPLETE_SUCCESS_MARKER,
@@ -181,113 +182,6 @@ class Log:
     """Logging utility class for managing trace contexts and stdout override."""
 
     @staticmethod
-    def start(name: Optional[str] = None, data: Optional[Dict] = None, **kwargs) -> str:
-        """Start a new logging context with the given name.
-
-        If a context already exists, it will be cleared before creating
-        the new one.
-
-        Args:
-            name: The name of the logging context
-
-        Returns:
-            The generated trace ID
-        """
-        # Clear any existing context
-        try:
-            Log.end()
-
-            # Generate new trace ID
-            trace_id = f"T{uuid.uuid4().hex}"
-
-            # Set up new context
-            LoggingContext.set(TRACE_ID_KEY_RESERVED_V2, trace_id)
-
-            if name:
-                LoggingContext.set(TRACE_NAME_KEY_RESERVED_V2, name)
-
-            if data:
-                data.update({
-                    TAGS_KEY: {
-                        TRACE_START_MARKER: True
-                    },
-                    'trace_name': name
-                })
-            else:
-                data = {
-                    TAGS_KEY: {
-                        TRACE_START_MARKER: True
-                    },
-                    'trace_name': name
-                }
-            Log.info("Beginning {trace_name}", data, **kwargs)
-
-            return trace_id
-        except Exception as e:
-            sdk_logger.error(
-                f"Error in Log.start : {str(e)}: {traceback.format_exc()}")
-            return None
-
-    @staticmethod
-    def end() -> None:
-        try:
-            """End the current logging context by clearing all context data."""
-            LoggingContext.clear()
-        except Exception as e:
-            sdk_logger.error(
-                f"Error in Log.end : {str(e)}: {traceback.format_exc()}")
-
-    @staticmethod
-    def complete_success(data: Optional[Dict] = None, **kwargs) -> None:
-        """Mark the completion of a successful trace."""
-        try:
-            name = LoggingContext.get(TRACE_NAME_KEY_RESERVED_V2)
-            if data:
-                data.update({
-                    TAGS_KEY: {
-                        TRACE_COMPLETE_SUCCESS_MARKER: True
-                    },
-                    'trace_name': name
-                })
-            else:
-                data = {
-                    TAGS_KEY: {
-                        TRACE_COMPLETE_SUCCESS_MARKER: True
-                    },
-                    'trace_name': name
-                }
-            Log.info("Completed {trace_name}", data, **kwargs)
-            Log.end()
-        except Exception as e:
-            sdk_logger.error(
-                f"Error in Log.complete_success : {str(e)}: {traceback.format_exc()}")
-
-    @staticmethod
-    def complete_error(data: Optional[Dict] = None, **kwargs) -> None:
-        """Mark the completion of an error trace."""
-        try:
-            name = LoggingContext.get(TRACE_NAME_KEY_RESERVED_V2)
-            if data:
-                data.update({
-                    TAGS_KEY: {
-                        TRACE_COMPLETE_ERROR_MARKER: True
-                    },
-                    'trace_name': name
-                })
-            else:
-                data = {
-                    TAGS_KEY: {
-                        TRACE_COMPLETE_ERROR_MARKER: True
-                    },
-                    'trace_name': name
-                }
-            Log.error("Failed {trace_name}", data, **kwargs)
-            Log.end()
-        except Exception as e:
-            sdk_logger.error(
-                f"Error in Log.complete_error : {str(e)}: {traceback.format_exc()}")
-
-    @staticmethod
     def _prepare_log_data(message: str, data: Optional[Dict] = None, **kwargs) -> Dict[str, Any]:
         """Prepare log data by merging context, provided data and kwargs.
 
@@ -323,10 +217,6 @@ class Log:
             log_data[MESSAGE_KEY_RESERVED_V2] = message
 
             # log_data['f_locals'] = locals_dict
-
-            if not log_data.get(TRACE_ID_KEY_RESERVED_V2):
-                trace_id = Log.start()
-                log_data[TRACE_ID_KEY_RESERVED_V2] = trace_id
 
             # Merge explicit data dict if provided
             if data is not None and isinstance(data, dict):
@@ -405,6 +295,12 @@ class Log:
                         exc_type, exc_value, exc_traceback))
                     processed_data[EXEC_TYPE_RESERVED_V2] = exc_type.__name__
                     processed_data[EXEC_VALUE_RESERVED_V2] = str(exc_value)
+
+            # Add span ID from current span context if available
+            current_span = LoggingContext.get_current_span()
+            if current_span and current_span.span_id:
+                processed_data[SPAN_ID_KEY_RESERVED_V2] = current_span.span_id
+                processed_data[TRACE_ID_KEY_RESERVED_V2] = current_span.trace_id
 
             return processed_data
         except Exception as e:

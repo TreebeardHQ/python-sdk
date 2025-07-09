@@ -1,6 +1,7 @@
 """
 OpenTelemetry-compliant span data structures and utilities.
 """
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -52,7 +53,7 @@ class SpanEvent:
         }
         if self.attributes:
             result["attributes"] = [
-                {"key": k, "value": {"stringValue": str(v)}} 
+                {"key": k, "value": {"stringValue": str(v)}}
                 for k, v in self.attributes.items()
             ]
         return result
@@ -72,7 +73,7 @@ class SpanLink:
         }
         if self.attributes:
             result["attributes"] = [
-                {"key": k, "value": {"stringValue": str(v)}} 
+                {"key": k, "value": {"stringValue": str(v)}}
                 for k, v in self.attributes.items()
             ]
         return result
@@ -92,7 +93,7 @@ class Span:
     events: List[SpanEvent] = field(default_factory=list)
     links: List[SpanLink] = field(default_factory=list)
     status: SpanStatus = field(default_factory=SpanStatus)
-    
+
     def __post_init__(self):
         if self.start_time_unix_nano is None:
             self.start_time_unix_nano = time.time_ns()
@@ -116,7 +117,7 @@ class Span:
         )
         self.events.append(event)
 
-    def add_link(self, trace_id: str, span_id: str, 
+    def add_link(self, trace_id: str, span_id: str,
                  attributes: Optional[Dict[str, Any]] = None) -> None:
         """Add a link to another span."""
         link = SpanLink(
@@ -139,28 +140,28 @@ class Span:
             "kind": self.kind.value,
             "startTimeUnixNano": self.start_time_unix_nano
         }
-        
+
         if self.parent_span_id:
             result["parentSpanId"] = self.parent_span_id
-            
+
         if self.end_time_unix_nano:
             result["endTimeUnixNano"] = self.end_time_unix_nano
-            
+
         if self.attributes:
             result["attributes"] = [
-                {"key": k, "value": _format_attribute_value(v)} 
+                {"key": k, "value": _format_attribute_value(v)}
                 for k, v in self.attributes.items()
             ]
-            
+
         if self.events:
             result["events"] = [event.to_dict() for event in self.events]
-            
+
         if self.links:
             result["links"] = [link.to_dict() for link in self.links]
-            
+
         if self.status.code != SpanStatusCode.UNSET:
             result["status"] = self.status.to_dict()
-            
+
         return result
 
 
@@ -180,12 +181,12 @@ def _format_attribute_value(value: Any) -> Dict[str, Any]:
 
 def generate_trace_id() -> str:
     """Generate a new OpenTelemetry trace ID."""
-    return uuid.uuid4().hex + uuid.uuid4().hex[:16]
+    return os.urandom(16).hex()
 
 
 def generate_span_id() -> str:
     """Generate a new OpenTelemetry span ID."""
-    return uuid.uuid4().hex[:16]
+    return os.urandom(8).hex()
 
 
 @dataclass
@@ -194,7 +195,7 @@ class SpanContext:
     trace_id: str
     span_id: str
     parent_span_id: Optional[str] = None
-    
+
     @classmethod
     def create_root_context(cls) -> "SpanContext":
         """Create a new root span context."""
@@ -202,7 +203,7 @@ class SpanContext:
             trace_id=generate_trace_id(),
             span_id=generate_span_id()
         )
-    
+
     def create_child_context(self) -> "SpanContext":
         """Create a child span context."""
         return SpanContext(

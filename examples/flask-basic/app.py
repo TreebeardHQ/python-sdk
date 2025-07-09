@@ -22,7 +22,6 @@ if app.config['THREADING_ENABLED']:
 @app.route("/products")
 def list_products():
     # Start a trace for this request
-    trace_id = Log.start("list-products")
 
     try:
         category = request.args.get("category")
@@ -41,13 +40,10 @@ def list_products():
     except ValueError as e:
         Log.error("Invalid request parameters", error=str(e))
         return jsonify({"error": str(e)}), 400
-    finally:
-        Log.end()
 
 
 @app.route("/products/<product_id>")
 def get_product(product_id):
-    trace_id = Log.start("get-product")
 
     try:
         Log.info("Fetching product details", product_id=product_id)
@@ -62,13 +58,10 @@ def get_product(product_id):
     except ValueError as e:
         Log.error("Error fetching product", error=str(e))
         return jsonify({"error": str(e)}), 400
-    finally:
-        Log.end()
 
 
 @app.route("/long-operation")
 def long_operation():
-    trace_id = Log.start("long-operation")
 
     try:
         Log.info("Starting long operation")
@@ -80,8 +73,6 @@ def long_operation():
     except Exception as e:
         Log.error("Error in long operation", error=str(e))
         return jsonify({"error": str(e)}), 500
-    finally:
-        Log.end()
 
 
 if __name__ == "__main__":
