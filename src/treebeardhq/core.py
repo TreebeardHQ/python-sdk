@@ -118,6 +118,7 @@ class Treebeard:
     _flush_timer: Optional[FlushTimerWorker] = None
 
     _config_version: Optional[int] = None
+    _exporter: Optional[TreebeardExporter] = None
 
     _initialized = False
 
@@ -615,7 +616,8 @@ class Treebeard:
                 formatted_message = colored(
                     f"[{trace_id}:{span_id}] {message}", color)
             else:
-                formatted_message = colored(f"[{trace_id}] {message}", color)
+                formatted_message = colored(
+                    f"[{trace_id}] {message}", color)
             full_message = formatted_message + \
                 ('\n' + metadata_str if metadata_str else '')
 
