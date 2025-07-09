@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 class LogSenderWorker(threading.Thread):
     """Worker thread to process sending requests asynchronously."""
-    
+
     def __init__(self, send_queue: Queue):
         super().__init__(daemon=True)
         self._stop_event = threading.Event()
@@ -43,20 +43,21 @@ class LogSenderWorker(threading.Thread):
 
 class TreebeardExporter:
     """Handles exporting logs, objects, and spans to the Treebeard API."""
-    
+
     def __init__(
-        self, api_key: str, endpoint: str, objects_endpoint: str, 
+        self, api_key: str, endpoint: str, objects_endpoint: str,
         spans_endpoint: Optional[str] = None, project_name: Optional[str] = None
     ):
         self._api_key = api_key
         self._endpoint = endpoint
         self._objects_endpoint = objects_endpoint
-        self._spans_endpoint = spans_endpoint or endpoint.replace('/logs/batch', '/spans/batch')
+        self._spans_endpoint = spans_endpoint or endpoint.replace(
+            '/logs/batch', '/spans/batch')
         self._project_name = project_name
         self._send_queue: Queue = Queue()
         self._worker: Optional[LogSenderWorker] = None
         self._worker_started = False
-        
+
     def start_worker(self) -> None:
         """Start the background worker thread if not already started."""
         if not self._worker_started:
@@ -65,24 +66,24 @@ class TreebeardExporter:
                 self._worker.start()
                 sdk_logger.info("Treebeard log worker started.")
             self._worker_started = True
-            
+
     def stop_worker(self) -> None:
         """Stop the background worker thread."""
         if self._worker and self._worker.is_alive():
             self._worker.stop()
             self._worker.join(timeout=10)
             self._worker_started = False
-            
+
     def send_logs_async(
-        self, logs: List[Any], config_version: Optional[int] = None, 
+        self, logs: List[Any], config_version: Optional[int] = None,
         update_callback: Optional[Callable[[Dict[str, Any]], None]] = None
     ) -> None:
         """Queue logs to be sent asynchronously."""
         def send_request():
             self._send_logs(logs, config_version, update_callback)
-        
+
         self._send_queue.put(send_request)
-        
+
     def send_objects_async(
         self, objects: List[Dict[str, Any]], config_version: Optional[int] = None,
         update_callback: Optional[Callable[[Dict[str, Any]], None]] = None
@@ -90,9 +91,9 @@ class TreebeardExporter:
         """Queue objects to be sent asynchronously."""
         def send_request():
             self._send_objects(objects, config_version, update_callback)
-            
+
         self._send_queue.put(send_request)
-        
+
     def send_spans_async(
         self, spans: List["Span"], config_version: Optional[int] = None,
         update_callback: Optional[Callable[[Dict[str, Any]], None]] = None
@@ -100,9 +101,9 @@ class TreebeardExporter:
         """Queue spans to be sent asynchronously."""
         def send_request():
             self._send_spans(spans, config_version, update_callback)
-            
+
         self._send_queue.put(send_request)
-        
+
     def _send_logs(self, logs: List[Any], config_version: Optional[int] = None,
                    update_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
         """Send logs to the Treebeard API."""
@@ -132,7 +133,8 @@ class TreebeardExporter:
                     # we get an updated config if the server has a later config version than we
                     # sent it
                     if (
-                        isinstance(result, dict) and result.get('updated_config') 
+                        isinstance(result, dict) and result.get(
+                            'updated_config')
                         and update_callback
                     ):
                         update_callback(result.get('updated_config'))
@@ -177,7 +179,8 @@ class TreebeardExporter:
                     # we get an updated config if the server has a later config version than we
                     # sent it
                     if (
-                        isinstance(result, dict) and result.get('updated_config') 
+                        isinstance(result, dict) and result.get(
+                            'updated_config')
                         and update_callback
                     ):
                         update_callback(result.get('updated_config'))
@@ -200,10 +203,10 @@ class TreebeardExporter:
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self._api_key}'
         }
-        
+
         # Convert spans to OpenTelemetry format
         resource_spans = self._format_spans_for_otel(spans)
-        
+
         data = json.dumps({
             'resourceSpans': resource_spans,
             'project_name': self._project_name,
@@ -227,7 +230,8 @@ class TreebeardExporter:
                     # we get an updated config if the server has a later config version than we
                     # sent it
                     if (
-                        isinstance(result, dict) and result.get('updated_config') 
+                        isinstance(result, dict) and result.get(
+                            'updated_config')
                         and update_callback
                     ):
                         update_callback(result.get('updated_config'))
@@ -235,7 +239,7 @@ class TreebeardExporter:
                     return result
                 else:
                     sdk_logger.warning(
-                        f"Attempt {attempt+1} failed: {response.status_code} - {response.text}")
+                        f"Attempt {attempt+1} failed: {response.status_code} - {response.text} {self._spans_endpoint}")
             except Exception as e:
                 sdk_logger.error("error while sending spans", exc_info=e)
             time.sleep(delay)
@@ -245,14 +249,14 @@ class TreebeardExporter:
         """Format spans into OpenTelemetry ResourceSpans structure."""
         if not spans:
             return []
-        
+
         # Group spans by service (project) name
         scope_spans = []
         otel_spans = []
-        
+
         for span in spans:
             otel_spans.append(span.to_otel_dict())
-        
+
         scope_spans.append({
             "scope": {
                 "name": "treebeard-python-sdk",
@@ -260,7 +264,7 @@ class TreebeardExporter:
             },
             "spans": otel_spans
         })
-        
+
         # Create resource with service name
         resource_attributes = []
         if self._project_name:
@@ -268,7 +272,7 @@ class TreebeardExporter:
                 "key": "service.name",
                 "value": {"stringValue": self._project_name}
             })
-        
+
         return [{
             "resource": {
                 "attributes": resource_attributes

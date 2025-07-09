@@ -93,8 +93,6 @@ signal.signal(signal.SIGTERM, _handle_shutdown)
 DEFAULT_BATCH_SIZE = 500
 DEFAULT_BATCH_AGE = 30.0
 DEFAULT_API_URL = 'https://api.treebeardhq.com/logs/batch'
-DEFAULT_OBJECTS_API_URL = 'https://api.treebeardhq.com/objects/register'
-DEFAULT_SPANS_API_URL = 'https://api.treebeardhq.com/spans/batch'
 
 
 class Treebeard:
@@ -195,11 +193,9 @@ class Treebeard:
             'TREEBEARD_API_URL', DEFAULT_API_URL)
         self._objects_endpoint = (
             self._endpoint.replace('/logs/batch', '/objects/register')
-            if self._endpoint else DEFAULT_OBJECTS_API_URL
         )
         self._spans_endpoint = (
             self._endpoint.replace('/logs/batch', '/spans/batch')
-            if self._endpoint else DEFAULT_SPANS_API_URL
         )
         self._capture_stdout = capture_stdout if capture_stdout is not None else os.getenv(
             'TREEBEARD_CAPTURE_STDOUT', False)
@@ -390,6 +386,12 @@ class Treebeard:
                 self._env = os.getenv('ENV', self._env)
                 self._endpoint = os.getenv(
                     'TREEBEARD_API_URL', self._endpoint)
+                self._spans_endpoint = (
+                    self._endpoint.replace('/logs/batch', '/spans/batch')
+                )
+                self._objects_endpoint = (
+                    self._endpoint.replace('/logs/batch', '/objects/register')
+                )
 
                 self._api_key = key.strip()
                 self._log_to_stdout = os.getenv(
