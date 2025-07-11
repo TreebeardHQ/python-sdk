@@ -56,9 +56,6 @@ def start_span(
     # Push span to context
     LoggingContext.push_span(span)
 
-    # Submit span to core for batching (will be added when we update core)
-    _submit_span_to_core(span)
-
     return span
 
 
@@ -73,6 +70,7 @@ def end_span(span: Optional[Span] = None, status: Optional[SpanStatus] = None) -
 
     if target_span and not target_span.is_ended():
         target_span.end(status)
+        _submit_span_to_core(target_span)
 
         # If this is the current span, pop it from context
         current_span = LoggingContext.get_current_span()
@@ -168,7 +166,7 @@ def record_exception_on_span(
     # Get configuration from Treebeard singleton for code snippet capture
     from .core import Treebeard
     treebeard_instance = Treebeard()
-    
+
     # Use provided params or fall back to global config
     capture_enabled = (
         capture_code_snippets if capture_code_snippets is not None
@@ -178,7 +176,7 @@ def record_exception_on_span(
         context_lines if context_lines is not None
         else treebeard_instance.code_snippet_context_lines
     )
-    
+
     # Capture code snippets if enabled
     if capture_enabled:
         extractor = CodeSnippetExtractor(
@@ -190,7 +188,7 @@ def record_exception_on_span(
         frame_infos = extractor.extract_from_exception(exception)
     else:
         frame_infos = []
-    
+
     # Add frame information to attributes if we have any
     if frame_infos:
         for i, frame_info in enumerate(frame_infos):
@@ -198,7 +196,7 @@ def record_exception_on_span(
             attributes[f"{frame_prefix}.filename"] = frame_info['filename']
             attributes[f"{frame_prefix}.lineno"] = str(frame_info['lineno'])
             attributes[f"{frame_prefix}.function"] = frame_info['function']
-            
+
             # Add code snippet if available
             if frame_info['code_snippet']:
                 from .code_snippets import format_code_snippet
@@ -208,17 +206,19 @@ def record_exception_on_span(
                     highlight_error=True
                 )
                 attributes[f"{frame_prefix}.code_snippet"] = formatted_snippet
-                
+
                 # Add individual context lines
                 for j, (line, line_num) in enumerate(
-                    zip(frame_info['code_snippet'], frame_info['context_line_numbers'])
+                    zip(frame_info['code_snippet'],
+                        frame_info['context_line_numbers'])
                 ):
                     attributes[f"{frame_prefix}.context.{line_num}"] = line
-                
+
                 # Mark the error line
                 if frame_info['error_line_index'] >= 0:
                     error_line_num = frame_info['context_line_numbers'][frame_info['error_line_index']]
-                    attributes[f"{frame_prefix}.error_lineno"] = str(error_line_num)
+                    attributes[f"{frame_prefix}.error_lineno"] = str(
+                        error_line_num)
 
     # Add exception event to span
     target_span.add_event("exception", attributes)
