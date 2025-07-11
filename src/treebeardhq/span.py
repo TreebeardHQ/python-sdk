@@ -7,6 +7,7 @@ from typing import Any, Dict, Generator, Optional
 
 from .context import LoggingContext
 from .spans import Span, SpanContext, SpanKind, SpanStatus, SpanStatusCode, generate_span_id, generate_trace_id
+from .code_snippets import CodeSnippetExtractor
 
 
 def start_span(
@@ -130,7 +131,9 @@ def add_span_event(
 def record_exception_on_span(
     exception: Exception,
     span: Optional[Span] = None,
-    escaped: bool = False
+    escaped: bool = False,
+    capture_code_snippets: bool = True,
+    context_lines: int = 5
 ) -> None:
     """Record an exception as an event on a span with type, message and stack trace.
 
@@ -138,6 +141,8 @@ def record_exception_on_span(
         exception: The exception to record
         span: The span to record the exception on. If None, uses current active span.
         escaped: Whether the exception escaped the span
+        capture_code_snippets: Whether to capture code snippets from traceback frames
+        context_lines: Number of context lines to capture around error line
     """
     target_span = span or LoggingContext.get_current_span()
     if not target_span:
@@ -159,6 +164,61 @@ def record_exception_on_span(
 
     if escaped:
         attributes["exception.escaped"] = "true"
+
+    # Get configuration from Treebeard singleton for code snippet capture
+    from .core import Treebeard
+    treebeard_instance = Treebeard()
+    
+    # Use provided params or fall back to global config
+    capture_enabled = (
+        capture_code_snippets if capture_code_snippets is not None
+        else treebeard_instance.code_snippet_enabled
+    )
+    context_lines_count = (
+        context_lines if context_lines is not None
+        else treebeard_instance.code_snippet_context_lines
+    )
+    
+    # Capture code snippets if enabled
+    if capture_enabled:
+        extractor = CodeSnippetExtractor(
+            context_lines=context_lines_count,
+            max_frames=treebeard_instance.code_snippet_max_frames,
+            capture_locals=False,
+            exclude_patterns=treebeard_instance.code_snippet_exclude_patterns
+        )
+        frame_infos = extractor.extract_from_exception(exception)
+    else:
+        frame_infos = []
+    
+    # Add frame information to attributes if we have any
+    if frame_infos:
+        for i, frame_info in enumerate(frame_infos):
+            frame_prefix = f"exception.frames.{i}"
+            attributes[f"{frame_prefix}.filename"] = frame_info['filename']
+            attributes[f"{frame_prefix}.lineno"] = str(frame_info['lineno'])
+            attributes[f"{frame_prefix}.function"] = frame_info['function']
+            
+            # Add code snippet if available
+            if frame_info['code_snippet']:
+                from .code_snippets import format_code_snippet
+                formatted_snippet = format_code_snippet(
+                    frame_info,
+                    show_line_numbers=True,
+                    highlight_error=True
+                )
+                attributes[f"{frame_prefix}.code_snippet"] = formatted_snippet
+                
+                # Add individual context lines
+                for j, (line, line_num) in enumerate(
+                    zip(frame_info['code_snippet'], frame_info['context_line_numbers'])
+                ):
+                    attributes[f"{frame_prefix}.context.{line_num}"] = line
+                
+                # Mark the error line
+                if frame_info['error_line_index'] >= 0:
+                    error_line_num = frame_info['context_line_numbers'][frame_info['error_line_index']]
+                    attributes[f"{frame_prefix}.error_lineno"] = str(error_line_num)
 
     # Add exception event to span
     target_span.add_event("exception", attributes)

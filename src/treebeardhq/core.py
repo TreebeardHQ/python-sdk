@@ -11,7 +11,7 @@ import threading
 import time
 import traceback
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from termcolor import colored
 
@@ -140,6 +140,10 @@ class Treebeard:
         capture_python_logger: Optional[bool] = None,
         python_logger_level: str = 'DEBUG',
         python_logger_name: Optional[str] = None,
+        code_snippet_enabled: Optional[bool] = None,
+        code_snippet_context_lines: Optional[int] = None,
+        code_snippet_max_frames: Optional[int] = None,
+        code_snippet_exclude_patterns: Optional[List[str]] = None,
     ):
         """
         Initialize the Treebeard class.
@@ -227,6 +231,25 @@ class Treebeard:
 
         self._otel_format = otel_format if otel_format is not None else os.getenv(
             'TREEBEARD_OTEL_FORMAT', False)
+
+        # Initialize code snippet configuration
+        self._code_snippet_enabled = (
+            code_snippet_enabled if code_snippet_enabled is not None
+            else os.getenv('TREEBEARD_CODE_SNIPPET_ENABLED', 'true').lower() == 'true'
+        )
+        self._code_snippet_context_lines = (
+            code_snippet_context_lines if code_snippet_context_lines is not None
+            else int(os.getenv('TREEBEARD_CODE_SNIPPET_CONTEXT_LINES', '5'))
+        )
+        self._code_snippet_max_frames = (
+            code_snippet_max_frames if code_snippet_max_frames is not None
+            else int(os.getenv('TREEBEARD_CODE_SNIPPET_MAX_FRAMES', '20'))
+        )
+        exclude_patterns_env = os.getenv('TREEBEARD_CODE_SNIPPET_EXCLUDE_PATTERNS', 'site-packages,venv,__pycache__')
+        self._code_snippet_exclude_patterns = (
+            code_snippet_exclude_patterns if code_snippet_exclude_patterns is not None
+            else [p.strip() for p in exclude_patterns_env.split(',') if p.strip()]
+        )
 
         # Enable stdout capture if requested
         if self._capture_stdout:
@@ -346,6 +369,22 @@ class Treebeard:
     @property
     def debug_mode(self) -> bool:
         return self._debug_mode
+
+    @property
+    def code_snippet_enabled(self) -> bool:
+        return getattr(self, '_code_snippet_enabled', True)
+
+    @property
+    def code_snippet_context_lines(self) -> int:
+        return getattr(self, '_code_snippet_context_lines', 5)
+
+    @property
+    def code_snippet_max_frames(self) -> int:
+        return getattr(self, '_code_snippet_max_frames', 20)
+
+    @property
+    def code_snippet_exclude_patterns(self) -> List[str]:
+        return getattr(self, '_code_snippet_exclude_patterns', ['site-packages', 'venv', '__pycache__'])
 
     @classmethod
     def reset(cls) -> None:
