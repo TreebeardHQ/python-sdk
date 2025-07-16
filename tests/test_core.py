@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from treebeardhq.core import Treebeard
-from treebeardhq.internal_utils.fallback_logger import fallback_logger
+from treebeardhq.internal_utils.fallback_logger import fallback_logger, sdk_logger
 
 
 @pytest.fixture(autouse=True)
@@ -89,13 +89,13 @@ def test_switching_between_modes(reset_treebeard):
 def test_project_name_initialization(reset_treebeard):
     """Test that project_name is properly set and sent to API."""
     project_name = "test-project"
-    
+
     # Mock the TreebeardExporter class
     with patch('treebeardhq.core.TreebeardExporter') as MockExporter:
         # Create a mock exporter instance
         mock_exporter = MagicMock()
         MockExporter.return_value = mock_exporter
-        
+
         # Initialize with project_name
         Treebeard.init(project_name=project_name,
                        api_key="test-key", endpoint="http://test.com")
@@ -103,7 +103,7 @@ def test_project_name_initialization(reset_treebeard):
 
         # Verify project_name is set
         assert instance._project_name == project_name
-        
+
         # Verify exporter was initialized with correct parameters
         MockExporter.assert_called_once_with(
             api_key="test-key",
@@ -123,7 +123,7 @@ def test_project_name_initialization(reset_treebeard):
         logs = call_args[0][0]  # First positional argument
         config_version = call_args[0][1]  # Second positional argument
         update_callback = call_args[0][2]  # Third positional argument
-        
+
         assert len(logs) == 1
         assert update_callback == instance.update_project_config
 
@@ -148,13 +148,13 @@ def test_project_name_none_when_not_provided(reset_treebeard):
         # Create a mock exporter instance
         mock_exporter = MagicMock()
         MockExporter.return_value = mock_exporter
-        
+
         Treebeard.init(api_key="test-key", endpoint="http://test.com")
         instance = Treebeard()
 
         # Should be None when not provided
         assert instance._project_name is None
-        
+
         # Verify exporter was initialized with None project_name
         MockExporter.assert_called_once_with(
             api_key="test-key",
@@ -428,3 +428,68 @@ def test_format_log_uses_standard_when_disabled(reset_treebeard):
     assert 'msg' in standard_result
     assert 'lvl' in standard_result
     assert 'ts' in standard_result
+
+
+def test_debug_mode_initialization(reset_treebeard):
+    """Test that debug mode properly sets SDK logger level."""
+    # Test with debug mode enabled
+    Treebeard.init(debug_mode=True)
+    instance = Treebeard()
+
+    assert instance.debug_mode is True
+    assert sdk_logger.level == logging.DEBUG
+
+
+def test_debug_mode_disabled(reset_treebeard):
+    """Test that debug mode disabled keeps SDK logger at INFO level."""
+    # Test with debug mode disabled
+    Treebeard.init(debug_mode=False)
+    instance = Treebeard()
+
+    assert instance.debug_mode is False
+    assert sdk_logger.level == logging.INFO
+
+
+def test_debug_mode_environment_variable(reset_treebeard):
+    """Test that debug mode can be set via environment variable."""
+    with patch.dict('os.environ', {'TREEBEARD_DEBUG_MODE': 'true'}):
+        Treebeard.init()
+        instance = Treebeard()
+
+        assert instance.debug_mode is True
+        assert sdk_logger.level == logging.DEBUG
+
+
+def test_debug_mode_update_project_config(reset_treebeard):
+    """Test that debug mode can be updated via update_project_config."""
+    Treebeard.init(debug_mode=False)
+    instance = Treebeard()
+
+    # Initially should be INFO level
+    assert sdk_logger.level == logging.INFO
+
+    # Update to debug mode
+    instance.update_project_config(debug_mode=True)
+
+    assert instance.debug_mode is True
+    assert sdk_logger.level == logging.DEBUG
+
+    # Update back to non-debug mode
+    instance.update_project_config(debug_mode=False)
+
+    assert instance.debug_mode is False
+    assert sdk_logger.level == logging.INFO
+
+
+def test_debug_mode_reset(reset_treebeard):
+    """Test that debug mode is properly reset."""
+    Treebeard.init(debug_mode=True)
+    instance = Treebeard()
+
+    # Should be in debug mode
+    assert sdk_logger.level == logging.DEBUG
+
+    # Reset should return to INFO level
+    Treebeard.reset()
+
+    assert sdk_logger.level == logging.INFO

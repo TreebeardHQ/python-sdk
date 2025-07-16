@@ -161,16 +161,7 @@ _treebeard_handler: Optional[TreebeardHandler] = None
 
 
 masked_terms = {
-    'password', 'pass', 'pw', 'secret', 'api_key', 'access_token', 'refresh_token',
-    'token', 'auth', 'credentials', 'credential', 'private_key', 'public_key',
-    'ssh_key', 'certificate', 'cert', 'signature', 'salt', 'nonce',
-    'session_id', 'session', 'cookie', 'jwt', 'bearer', 'oauth', 'oauth2', 'openid',
-    'client_id', 'client_secret', 'consumer_key', 'consumer_secret', 'aws_access_key',
-    'aws_secret_key', 'aws_session_token', 'azure_key', 'gcp_key', 'api_secret',
-    'encryption_key', 'decryption_key', 'master_key', 'root_key', 'admin_key',
-    'database_password', 'db_password', 'db_pass', 'redis_password', 'redis_pass',
-    'mongodb_password', 'mongodb_pass', 'postgres_password', 'postgres_pass',
-    'mysql_password', 'mysql_pass', 'oracle_password', 'oracle_pass'
+    'password'
 }
 
 pattern = re.compile(

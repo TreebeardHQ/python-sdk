@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Union
 from termcolor import colored
 
 from treebeardhq.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, FlushTimerWorker
+from .version import __version__
 
 from .batch import LogBatch, ObjectBatch, SpanBatch
 from .constants import (
@@ -144,6 +145,7 @@ class Treebeard:
         code_snippet_context_lines: Optional[int] = None,
         code_snippet_max_frames: Optional[int] = None,
         code_snippet_exclude_patterns: Optional[List[str]] = None,
+        debug_mode: Optional[bool] = None,
     ):
         """
         Initialize the Treebeard class.
@@ -175,6 +177,8 @@ class Treebeard:
                 Defaults to 'DEBUG'. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL.
             python_logger_name: Specific logger name to capture from, or None for root logger.
                 Defaults to None (captures from root logger).
+            debug_mode: Whether to enable debug mode. When True, sets the SDK logger level to DEBUG.
+                Can also be set via TREEBEARD_DEBUG_MODE environment variable.
         """
 
         # accept some of these variables even if we've already initialized automatically
@@ -202,7 +206,7 @@ class Treebeard:
             self._endpoint.replace('/logs/batch', '/spans/batch')
         )
         self._capture_stdout = capture_stdout if capture_stdout is not None else os.getenv(
-            'TREEBEARD_CAPTURE_STDOUT', False)
+            'TREEBEARD_CAPTURE_STDOUT', True)
         self._log_to_stdout = log_to_stdout if log_to_stdout is not None else os.getenv(
             'TREEBEARD_LOG_TO_STDOUT', False)
 
@@ -211,7 +215,7 @@ class Treebeard:
 
         self._capture_python_logger = (
             capture_python_logger if capture_python_logger is not None
-            else os.getenv('TREEBEARD_CAPTURE_PYTHON_LOGGER', False)
+            else os.getenv('TREEBEARD_CAPTURE_PYTHON_LOGGER', True)
         )
         self._python_logger_level = (
             python_logger_level if python_logger_level is not None
@@ -223,8 +227,14 @@ class Treebeard:
         )
 
         self._env = os.getenv('ENV', "production")
-        self._debug_mode = os.getenv(
-            'TREEBEARD_DEBUG_MODE')
+        debug_mode_env = os.getenv('TREEBEARD_DEBUG_MODE')
+        self._debug_mode = debug_mode if debug_mode is not None else (
+            debug_mode_env.lower() == 'true' if debug_mode_env else False
+        )
+
+        # Set SDK logger level based on debug mode
+        if self._debug_mode:
+            sdk_logger.setLevel(logging.DEBUG)
 
         self._flush_interval = flush_interval if flush_interval is not None else os.getenv(
             'TREEBEARD_FLUSH_INTERVAL', DEFAULT_FLUSH_INTERVAL)
@@ -245,7 +255,8 @@ class Treebeard:
             code_snippet_max_frames if code_snippet_max_frames is not None
             else int(os.getenv('TREEBEARD_CODE_SNIPPET_MAX_FRAMES', '20'))
         )
-        exclude_patterns_env = os.getenv('TREEBEARD_CODE_SNIPPET_EXCLUDE_PATTERNS', 'site-packages,venv,__pycache__')
+        exclude_patterns_env = os.getenv(
+            'TREEBEARD_CODE_SNIPPET_EXCLUDE_PATTERNS', 'site-packages,venv,__pycache__')
         self._code_snippet_exclude_patterns = (
             code_snippet_exclude_patterns if code_snippet_exclude_patterns is not None
             else [p.strip() for p in exclude_patterns_env.split(',') if p.strip()]
@@ -308,6 +319,9 @@ class Treebeard:
             sdk_logger.warning(
                 "No API key provided - using fallback logger.")
 
+        # Print SDK version for debugging
+        sdk_logger.info(f"Treebeard SDK version: {__version__}")
+
     @classmethod
     def init(cls, **kwargs: Any) -> None:
         """
@@ -339,6 +353,15 @@ class Treebeard:
             'python_logger_level', self._python_logger_level)
         self._python_logger_name = kwargs.get(
             'python_logger_name', self._python_logger_name)
+
+        # Update debug mode and SDK logger level
+        debug_mode = kwargs.get('debug_mode', self._debug_mode)
+        if debug_mode != self._debug_mode:
+            self._debug_mode = debug_mode
+            if self._debug_mode:
+                sdk_logger.setLevel(logging.DEBUG)
+            else:
+                sdk_logger.setLevel(logging.INFO)
 
         if self._stdout_log_level:
             fallback_logger.setLevel(self._stdout_log_level)
@@ -403,6 +426,7 @@ class Treebeard:
             cls._instance._using_fallback = True
             cls._instance._log_to_stdout = False
             cls._instance._debug_mode = False
+            sdk_logger.setLevel(logging.INFO)  # Reset SDK logger level
             cls._instance._capture_stdout = False
             cls._instance._env = None
             cls._instance._project_name = None
@@ -440,6 +464,16 @@ class Treebeard:
 
                 self._stdout_log_level = os.getenv(
                     'TREEBEARD_STDOUT_LOG_LEVEL', self._stdout_log_level)
+
+                # Update debug mode and SDK logger level during lazy loading
+                debug_mode_env = os.getenv('TREEBEARD_DEBUG_MODE')
+                debug_mode = debug_mode_env.lower() == 'true' if debug_mode_env else False
+                if debug_mode != self._debug_mode:
+                    self._debug_mode = debug_mode
+                    if self._debug_mode:
+                        sdk_logger.setLevel(logging.DEBUG)
+                    else:
+                        sdk_logger.setLevel(logging.INFO)
 
                 self._initialized = True
 

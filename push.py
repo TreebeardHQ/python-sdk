@@ -41,6 +41,9 @@ def update_version(file_path, current_version, is_dev):
     if file_path.endswith('pyproject.toml'):
         content = re.sub(r'version = ".*"',
                          f'version = "{new_version}"', content)
+    elif file_path.endswith('__init__.py'):
+        content = re.sub(r'__version__ = ".*"',
+                         f'__version__ = "{new_version}"', content)
     else:  # setup.py
         content = re.sub(r'version=".*"', f'version="{new_version}"', content)
 
@@ -65,6 +68,8 @@ def main():
     # Update versions
     new_version = update_version('pyproject.toml', current_version, args.dev)
     update_version('setup.py', current_version, args.dev)
+    update_version('src/treebeardhq/version/__init__.py',
+                   current_version, args.dev)
     print(f"Updated version to {new_version}")
 
     # Clean dist directory
