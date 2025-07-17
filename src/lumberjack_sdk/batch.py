@@ -1,5 +1,5 @@
 """
-Batching functionality for Treebeard logs, objects, and spans.
+Batching functionality for Lumberjack logs, objects, and spans.
 
 This module handles the caching and batching of log entries, objects, and spans
 before they are sent to the server.

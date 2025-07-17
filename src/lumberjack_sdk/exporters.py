@@ -1,5 +1,5 @@
 """
-Export functionality for sending logs, objects, and spans to the Treebeard API.
+Export functionality for sending logs, objects, and spans to the Lumberjack API.
 """
 import json
 import threading
@@ -41,8 +41,8 @@ class LogSenderWorker(threading.Thread):
         self._send_queue.put(None)
 
 
-class TreebeardExporter:
-    """Handles exporting logs, objects, and spans to the Treebeard API."""
+class LumberjackExporter:
+    """Handles exporting logs, objects, and spans to the Lumberjack API."""
 
     def __init__(
         self, api_key: str, endpoint: str, objects_endpoint: str,
@@ -64,7 +64,7 @@ class TreebeardExporter:
             if not self._worker or not self._worker.is_alive():
                 self._worker = LogSenderWorker(self._send_queue)
                 self._worker.start()
-                sdk_logger.info("Treebeard log worker started.")
+                sdk_logger.info("Lumberjack log worker started.")
             self._worker_started = True
 
     def stop_worker(self) -> None:
@@ -106,7 +106,7 @@ class TreebeardExporter:
 
     def _send_logs(self, logs: List[Any], config_version: Optional[int] = None,
                    update_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> None:
-        """Send logs to the Treebeard API."""
+        """Send logs to the Lumberjack API."""
         headers = {
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self._api_key}'
@@ -198,7 +198,7 @@ class TreebeardExporter:
         self, spans: List["Span"], config_version: Optional[int] = None,
         update_callback: Optional[Callable[[Dict[str, Any]], None]] = None
     ) -> None:
-        """Send spans to the Treebeard API in OpenTelemetry format."""
+        """Send spans to the Lumberjack API in OpenTelemetry format."""
         headers = {
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self._api_key}'
@@ -259,7 +259,7 @@ class TreebeardExporter:
 
         scope_spans.append({
             "scope": {
-                "name": "treebeard-python-sdk",
+                "name": "lumberjack-python-sdk",
                 "version": "2.0"
             },
             "spans": otel_spans

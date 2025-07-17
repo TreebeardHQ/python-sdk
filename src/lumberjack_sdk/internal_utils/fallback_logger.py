@@ -1,9 +1,9 @@
 """
-Fallback logger for Treebeard.
+Fallback logger for Lumberjack.
 """
 import logging
 
-fallback_logger = logging.getLogger('treebeard')
+fallback_logger = logging.getLogger('lumberjack')
 fallback_logger.propagate = False
 if not fallback_logger.handlers:
     handler = logging.StreamHandler()
@@ -15,7 +15,7 @@ if not fallback_logger.handlers:
 fallback_logger.setLevel(logging.INFO)
 
 
-sdk_logger = logging.getLogger('treebeard.sdk')
+sdk_logger = logging.getLogger('lumberjack.sdk')
 sdk_logger.propagate = False
 if not sdk_logger.handlers:
     handler = logging.StreamHandler()

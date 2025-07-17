@@ -13,7 +13,7 @@ sys.path.insert(0, src_path)
 path_updated = True
 
 if path_updated:
-    from treebeardhq.context import LoggingContext
+    from lumberjack_sdk.context import LoggingContext
 
 
 @pytest.fixture(autouse=True)

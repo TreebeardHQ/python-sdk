@@ -3,12 +3,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "treebeardhq"
-version = "0.4.12dev0"
+name = "lumberjack_sdk"
+version = "0.4.18"
 authors = [
     { name = "George Mayer", email = "george@treebeardhq.com" },
 ]
-description = "The Treebeard Python SDK"
+description = "The Lumberjack Python SDK"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -37,8 +37,8 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/treebeardhq/sdk-python"
-"Bug Tracker" = "https://github.com/treebeardhq/sdk-python/issues"
+"Homepage" = "https://github.com/treebeardhq/lumberjack-sdk-python"
+"Bug Tracker" = "https://github.com/treebeardhq/lumberjack-sdk-python/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -49,7 +49,7 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "0.4.12dev0"
+python_version = "0.4.18"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

@@ -6,32 +6,32 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from treebeardhq.core import Treebeard
-from treebeardhq.internal_utils.fallback_logger import fallback_logger, sdk_logger
+from lumberjack_sdk.core import Lumberjack
+from lumberjack_sdk.internal_utils.fallback_logger import fallback_logger, sdk_logger
 
 
 @pytest.fixture(autouse=True)
-def reset_treebeard():
-    """Reset Treebeard singleton between tests."""
+def reset_lumberjack():
+    """Reset Lumberjack singleton between tests."""
     yield
-    Treebeard.reset()
+    Lumberjack.reset()
 
 
 def test_init_valid_api_key():
     api_key = "test-api-key"
-    Treebeard.init(api_key=api_key, endpoint="https://test.endpoint")
-    client = Treebeard()
+    Lumberjack.init(api_key=api_key, endpoint="https://test.endpoint")
+    client = Lumberjack()
     assert client.api_key == api_key
     assert client._endpoint == "https://test.endpoint"
 
 
 def test_singleton_behavior():
     api_key = "test-api-key"
-    Treebeard.init(api_key=api_key,
-                   endpoint="https://test.endpoint")
+    Lumberjack.init(api_key=api_key,
+                    endpoint="https://test.endpoint")
 
-    instance1 = Treebeard()
-    instance2 = Treebeard()
+    instance1 = Lumberjack()
+    instance2 = Lumberjack()
 
     assert instance1 is instance2
     assert instance1.api_key == instance2.api_key == api_key
@@ -44,9 +44,9 @@ def test_init_empty_api_key(caplog):
     with patch("logging.StreamHandler.emit") as mock_emit:
 
         # Test with empty string
-        Treebeard.reset()
-        Treebeard.init(api_key="")
-        instance = Treebeard()
+        Lumberjack.reset()
+        Lumberjack.init(api_key="")
+        instance = Lumberjack()
         assert instance._using_fallback is True
         assert mock_emit.call_count == 1
         assert "No API key provided" in mock_emit.call_args[0][0].msg
@@ -54,12 +54,12 @@ def test_init_empty_api_key(caplog):
 
 def test_init_invalid_api_key_type():
     with pytest.raises(ValueError, match="API key must be a string"):
-        Treebeard.init(api_key=123, endpoint="https://test.endpoint")
+        Lumberjack.init(api_key=123, endpoint="https://test.endpoint")
 
 
 def test_uninitialized_client():
-    Treebeard.init()
-    instance = Treebeard()
+    Lumberjack.init()
+    instance = Lumberjack()
     assert instance._api_key is None
 
 
@@ -68,17 +68,17 @@ def test_fallback_logger_level():
     assert fallback_logger.level == logging.INFO
 
 
-def test_switching_between_modes(reset_treebeard):
+def test_switching_between_modes(reset_lumberjack):
     """Test switching between fallback and API modes."""
     # Start with fallback mode
-    Treebeard.init()
-    instance = Treebeard()
+    Lumberjack.init()
+    instance = Lumberjack()
     assert instance._using_fallback is True
 
     # Reset and switch to API mode
-    Treebeard.reset()
-    Treebeard.init(api_key="test-key", endpoint="http://test.com")
-    instance = Treebeard()
+    Lumberjack.reset()
+    Lumberjack.init(api_key="test-key", endpoint="http://test.com")
+    instance = Lumberjack()
     assert instance._using_fallback is False
 
     # Verify API mode is properly configured
@@ -86,20 +86,20 @@ def test_switching_between_modes(reset_treebeard):
     assert instance._endpoint == "http://test.com"
 
 
-def test_project_name_initialization(reset_treebeard):
+def test_project_name_initialization(reset_lumberjack):
     """Test that project_name is properly set and sent to API."""
     project_name = "test-project"
 
-    # Mock the TreebeardExporter class
-    with patch('treebeardhq.core.TreebeardExporter') as MockExporter:
+    # Mock the LumberjackExporter class
+    with patch('lumberjack_sdk.core.LumberjackExporter') as MockExporter:
         # Create a mock exporter instance
         mock_exporter = MagicMock()
         MockExporter.return_value = mock_exporter
 
         # Initialize with project_name
-        Treebeard.init(project_name=project_name,
-                       api_key="test-key", endpoint="http://test.com")
-        instance = Treebeard()
+        Lumberjack.init(project_name=project_name,
+                        api_key="test-key", endpoint="http://test.com")
+        instance = Lumberjack()
 
         # Verify project_name is set
         assert instance._project_name == project_name
@@ -128,29 +128,29 @@ def test_project_name_initialization(reset_treebeard):
         assert update_callback == instance.update_project_config
 
 
-def test_project_name_not_overwritten_on_reinitialization(reset_treebeard):
+def test_project_name_not_overwritten_on_reinitialization(reset_lumberjack):
     """Test that project_name can be updated on subsequent init calls."""
     # First initialization
-    Treebeard.init(project_name="first-project",
-                   api_key="test-key", endpoint="http://test.com")
-    instance = Treebeard()
+    Lumberjack.init(project_name="first-project",
+                    api_key="test-key", endpoint="http://test.com")
+    instance = Lumberjack()
     assert instance._project_name == "first-project"
 
     # Second initialization with different project_name (should update)
-    Treebeard.init(project_name="second-project")
+    Lumberjack.init(project_name="second-project")
     assert instance._project_name == "second-project"
 
 
-def test_project_name_none_when_not_provided(reset_treebeard):
+def test_project_name_none_when_not_provided(reset_lumberjack):
     """Test that project_name is None when not provided during initialization."""
-    # Mock the TreebeardExporter class
-    with patch('treebeardhq.core.TreebeardExporter') as MockExporter:
+    # Mock the LumberjackExporter class
+    with patch('lumberjack_sdk.core.LumberjackExporter') as MockExporter:
         # Create a mock exporter instance
         mock_exporter = MagicMock()
         MockExporter.return_value = mock_exporter
 
-        Treebeard.init(api_key="test-key", endpoint="http://test.com")
-        instance = Treebeard()
+        Lumberjack.init(api_key="test-key", endpoint="http://test.com")
+        instance = Lumberjack()
 
         # Should be None when not provided
         assert instance._project_name is None
@@ -172,38 +172,38 @@ def test_project_name_none_when_not_provided(reset_treebeard):
         assert mock_exporter.send_logs_async.called
 
 
-def test_project_name_reset(reset_treebeard):
+def test_project_name_reset(reset_lumberjack):
     """Test that project_name is properly reset."""
     # Initialize with project_name
-    Treebeard.init(project_name="test-project",
-                   api_key="test-key", endpoint="http://test.com")
-    instance = Treebeard()
+    Lumberjack.init(project_name="test-project",
+                    api_key="test-key", endpoint="http://test.com")
+    instance = Lumberjack()
     assert instance._project_name == "test-project"
 
     # Reset should clear project_name
-    Treebeard.reset()
+    Lumberjack.reset()
 
     # New instance should have None project_name
-    Treebeard.init(api_key="test-key", endpoint="http://test.com")
-    instance = Treebeard()
+    Lumberjack.init(api_key="test-key", endpoint="http://test.com")
+    instance = Lumberjack()
     assert instance._project_name is None
 
 
-def test_project_name_reset_on_reinit(reset_treebeard):
+def test_project_name_reset_on_reinit(reset_lumberjack):
     """Test the original bug scenario where project_name gets sent as None to API."""
     # This test reproduces the original issue described by the user
 
-    # Initialize Treebeard with a project name
-    Treebeard.init(project_name="my-project",
-                   api_key="test-key", endpoint="http://test.com")
-    instance = Treebeard()
+    # Initialize Lumberjack with a project name
+    Lumberjack.init(project_name="my-project",
+                    api_key="test-key", endpoint="http://test.com")
+    instance = Lumberjack()
 
     # Verify initial project_name is correct
     assert instance._project_name == "my-project"
 
     # Simulate another initialization call (which could happen in some codebases)
     # Before the fix, this would cause project_name to be ignored due to early return
-    Treebeard.init(api_key="test-key", endpoint="http://test.com")
+    Lumberjack.init(api_key="test-key", endpoint="http://test.com")
 
     # After the fix,
     # project_name should still be "my-project"
@@ -211,39 +211,39 @@ def test_project_name_reset_on_reinit(reset_treebeard):
     assert instance._project_name == "my-project"
 
     # Now test with a different project name - should update
-    Treebeard.init(project_name="updated-project")
+    Lumberjack.init(project_name="updated-project")
     assert instance._project_name == "updated-project"
 
 
-def test_otel_format_initialization(reset_treebeard):
+def test_otel_format_initialization(reset_lumberjack):
     """Test that OpenTelemetry format can be enabled during initialization."""
-    Treebeard.init(
+    Lumberjack.init(
         api_key="test-key",
         endpoint="http://test.com",
         otel_format=True
     )
-    instance = Treebeard()
+    instance = Lumberjack()
 
     assert instance._otel_format is True
 
 
-def test_otel_format_defaults_to_false(reset_treebeard):
+def test_otel_format_defaults_to_false(reset_lumberjack):
     """Test that OpenTelemetry format defaults to False."""
-    Treebeard.init(api_key="test-key", endpoint="http://test.com")
-    instance = Treebeard()
+    Lumberjack.init(api_key="test-key", endpoint="http://test.com")
+    instance = Lumberjack()
 
     assert instance._otel_format is False
 
 
-def test_otel_format_basic_log(reset_treebeard):
+def test_otel_format_basic_log(reset_lumberjack):
     """Test basic OpenTelemetry log formatting."""
-    Treebeard.init(
+    Lumberjack.init(
         api_key="test-key",
         endpoint="http://test.com",
         project_name="test-project",
         otel_format=True
     )
-    instance = Treebeard()
+    instance = Lumberjack()
 
     # Create a test log entry
     log_entry = {
@@ -253,7 +253,7 @@ def test_otel_format_basic_log(reset_treebeard):
         'tb_rv2_file': '/path/to/file.py',
         'tb_rv2_line': 42,
         'tb_rv2_function': 'test_function',
-        'tb_rv2_source': 'treebeard',
+        'tb_rv2_source': 'lumberjack',
         'ts': 1634630400000
     }
 
@@ -268,10 +268,10 @@ def test_otel_format_basic_log(reset_treebeard):
 
     # Verify Resource
     assert result['Resource']['service.name'] == 'test-project'
-    assert result['Resource']['source'] == 'treebeard'
+    assert result['Resource']['source'] == 'lumberjack'
 
     # Verify InstrumentationScope
-    assert result['InstrumentationScope']['Name'] == 'treebeard-python-sdk'
+    assert result['InstrumentationScope']['Name'] == 'lumberjack-python-sdk'
     assert result['InstrumentationScope']['Version'] == '2.0'
 
     # Verify Attributes
@@ -280,14 +280,14 @@ def test_otel_format_basic_log(reset_treebeard):
     assert result['Attributes']['code.function'] == 'test_function'
 
 
-def test_otel_format_severity_mapping(reset_treebeard):
+def test_otel_format_severity_mapping(reset_lumberjack):
     """Test OpenTelemetry severity level mapping."""
-    Treebeard.init(
+    Lumberjack.init(
         api_key="test-key",
         endpoint="http://test.com",
         otel_format=True
     )
-    instance = Treebeard()
+    instance = Lumberjack()
 
     severity_tests = [
         ('trace', 'TRACE', 1),
@@ -310,14 +310,14 @@ def test_otel_format_severity_mapping(reset_treebeard):
         assert result['SeverityNumber'] == expected_number
 
 
-def test_otel_format_with_exception(reset_treebeard):
+def test_otel_format_with_exception(reset_lumberjack):
     """Test OpenTelemetry formatting with exception information."""
-    Treebeard.init(
+    Lumberjack.init(
         api_key="test-key",
         endpoint="http://test.com",
         otel_format=True
     )
-    instance = Treebeard()
+    instance = Lumberjack()
     log_entry = {
         'tb_rv2_message': 'Error occurred',
         'tb_rv2_level': 'error',
@@ -339,14 +339,14 @@ def test_otel_format_with_exception(reset_treebeard):
     assert 'Traceback (most recent call last)' in result['Attributes']['exception.stacktrace']
 
 
-def test_otel_format_with_trace_name(reset_treebeard):
+def test_otel_format_with_trace_name(reset_lumberjack):
     """Test OpenTelemetry formatting with trace name."""
-    Treebeard.init(
+    Lumberjack.init(
         api_key="test-key",
         endpoint="http://test.com",
         otel_format=True
     )
-    instance = Treebeard()
+    instance = Lumberjack()
 
     log_entry = {
         'tb_rv2_message': 'Test trace',
@@ -358,14 +358,14 @@ def test_otel_format_with_trace_name(reset_treebeard):
     assert result['Attributes']['trace.name'] == 'user_login_flow'
 
 
-def test_otel_format_with_additional_attributes(reset_treebeard):
+def test_otel_format_with_additional_attributes(reset_lumberjack):
     """Test OpenTelemetry formatting preserves additional attributes."""
-    Treebeard.init(
+    Lumberjack.init(
         api_key="test-key",
         endpoint="http://test.com",
         otel_format=True
     )
-    instance = Treebeard()
+    instance = Lumberjack()
 
     log_entry = {
         'tb_rv2_message': 'HTTP request',
@@ -384,14 +384,14 @@ def test_otel_format_with_additional_attributes(reset_treebeard):
     assert result['Attributes']['status_code'] == 200
 
 
-def test_format_log_uses_otel_when_enabled(reset_treebeard):
+def test_format_log_uses_otel_when_enabled(reset_lumberjack):
     """Test that format_log uses OpenTelemetry format when enabled."""
-    Treebeard.init(
+    Lumberjack.init(
         api_key="test-key",
         endpoint="http://test.com",
         otel_format=True
     )
-    instance = Treebeard()
+    instance = Lumberjack()
 
     log_entry = {
         'tb_rv2_message': 'Test message',
@@ -407,14 +407,14 @@ def test_format_log_uses_otel_when_enabled(reset_treebeard):
     assert 'InstrumentationScope' in otel_result
 
 
-def test_format_log_uses_standard_when_disabled(reset_treebeard):
+def test_format_log_uses_standard_when_disabled(reset_lumberjack):
     """Test that format_log uses standard format when OTel is disabled."""
-    Treebeard.init(
+    Lumberjack.init(
         api_key="test-key",
         endpoint="http://test.com",
         otel_format=False
     )
-    instance = Treebeard()
+    instance = Lumberjack()
 
     log_entry = {
         'tb_rv2_message': 'Test message',
@@ -430,40 +430,40 @@ def test_format_log_uses_standard_when_disabled(reset_treebeard):
     assert 'ts' in standard_result
 
 
-def test_debug_mode_initialization(reset_treebeard):
+def test_debug_mode_initialization(reset_lumberjack):
     """Test that debug mode properly sets SDK logger level."""
     # Test with debug mode enabled
-    Treebeard.init(debug_mode=True)
-    instance = Treebeard()
+    Lumberjack.init(debug_mode=True)
+    instance = Lumberjack()
 
     assert instance.debug_mode is True
     assert sdk_logger.level == logging.DEBUG
 
 
-def test_debug_mode_disabled(reset_treebeard):
+def test_debug_mode_disabled(reset_lumberjack):
     """Test that debug mode disabled keeps SDK logger at INFO level."""
     # Test with debug mode disabled
-    Treebeard.init(debug_mode=False)
-    instance = Treebeard()
+    Lumberjack.init(debug_mode=False)
+    instance = Lumberjack()
 
     assert instance.debug_mode is False
     assert sdk_logger.level == logging.INFO
 
 
-def test_debug_mode_environment_variable(reset_treebeard):
+def test_debug_mode_environment_variable(reset_lumberjack):
     """Test that debug mode can be set via environment variable."""
-    with patch.dict('os.environ', {'TREEBEARD_DEBUG_MODE': 'true'}):
-        Treebeard.init()
-        instance = Treebeard()
+    with patch.dict('os.environ', {'LUMBERJACK_DEBUG_MODE': 'true'}):
+        Lumberjack.init()
+        instance = Lumberjack()
 
         assert instance.debug_mode is True
         assert sdk_logger.level == logging.DEBUG
 
 
-def test_debug_mode_update_project_config(reset_treebeard):
+def test_debug_mode_update_project_config(reset_lumberjack):
     """Test that debug mode can be updated via update_project_config."""
-    Treebeard.init(debug_mode=False)
-    instance = Treebeard()
+    Lumberjack.init(debug_mode=False)
+    instance = Lumberjack()
 
     # Initially should be INFO level
     assert sdk_logger.level == logging.INFO
@@ -481,15 +481,15 @@ def test_debug_mode_update_project_config(reset_treebeard):
     assert sdk_logger.level == logging.INFO
 
 
-def test_debug_mode_reset(reset_treebeard):
+def test_debug_mode_reset(reset_lumberjack):
     """Test that debug mode is properly reset."""
-    Treebeard.init(debug_mode=True)
-    instance = Treebeard()
+    Lumberjack.init(debug_mode=True)
+    instance = Lumberjack()
 
     # Should be in debug mode
     assert sdk_logger.level == logging.DEBUG
 
     # Reset should return to INFO level
-    Treebeard.reset()
+    Lumberjack.reset()
 
     assert sdk_logger.level == logging.INFO

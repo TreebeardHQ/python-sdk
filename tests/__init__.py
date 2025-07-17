@@ -1,3 +1,3 @@
 """
-Test suite for the treebeard library.
+Test suite for the lumberjack library.
 """

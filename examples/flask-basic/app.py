@@ -2,12 +2,12 @@ import time
 
 import utils
 from flask import Flask, jsonify, request
-from treebeardhq import Log, Treebeard
+from lumberjack_sdk import Log, Lumberjack
 
 app = Flask(__name__)
 
-# Initialize Treebeard
-Treebeard.init(
+# Initialize Lumberjack
+Lumberjack.init(
     api_key="",
     endpoint="https://your-logging-endpoint.com/logs"
 )

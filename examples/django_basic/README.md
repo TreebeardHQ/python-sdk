@@ -1,17 +1,19 @@
-# Treebeard Django Example
+# Lumberjack Django Example
 
-This example demonstrates how to integrate Treebeard logging with a Django application using the TreebeardDjangoMiddleware.
+This example demonstrates how to integrate Lumberjack logging with a Django application using the LumberjackDjangoMiddleware.
 
 ## Setup
 
 1. Install the dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Set your Treebeard API key as an environment variable:
+2. Set your Lumberjack API key as an environment variable:
+
    ```bash
-   export TREEBEARD_API_KEY="your-api-key-here"
+   export LUMBERJACK_API_KEY="your-api-key-here"
    ```
 
 3. Run the Django development server:
@@ -21,20 +23,21 @@ This example demonstrates how to integrate Treebeard logging with a Django appli
 
 ## Configuration
 
-This example shows two ways to configure Treebeard in Django:
+This example shows two ways to configure Lumberjack in Django:
 
 ### Method 1: Using AppConfig (Recommended)
 
 In `example_app/apps.py`:
+
 ```python
 from django.apps import AppConfig
-from treebeardhq.treebeard_django import TreebeardDjango
+from lumberjack_sdk.lumberjack_django import LumberjackDjango
 
 class ExampleAppConfig(AppConfig):
     name = "example_app"
-    
+
     def ready(self):
-        TreebeardDjango.init(
+        LumberjackDjango.init(
             project_name="django-example",
             log_to_stdout=True,
         )
@@ -43,13 +46,14 @@ class ExampleAppConfig(AppConfig):
 ### Method 2: Using Django Settings
 
 In `settings.py`:
+
 ```python
-TREEBEARD_API_KEY = "your-api-key-here"
-TREEBEARD_PROJECT_NAME = "django-example" 
-TREEBEARD_LOG_TO_STDOUT = True
+LUMBERJACK_API_KEY = "your-api-key-here"
+LUMBERJACK_PROJECT_NAME = "django-example"
+LUMBERJACK_LOG_TO_STDOUT = True
 ```
 
-Then call `TreebeardDjango.init()` in your AppConfig's `ready()` method (it will pick up the settings automatically).
+Then call `LumberjackDjango.init()` in your AppConfig's `ready()` method (it will pick up the settings automatically).
 
 ## Available Endpoints
 
@@ -61,16 +65,17 @@ Then call `TreebeardDjango.init()` in your AppConfig's `ready()` method (it will
 
 ## How It Works
 
-The Treebeard middleware is configured in `django_basic/settings.py`:
+The Lumberjack middleware is configured in `django_basic/settings.py`:
 
 ```python
 MIDDLEWARE = [
     # ... other middleware
-    "treebeardhq.treebeard_django.TreebeardDjangoMiddleware",
+    "lumberjack_sdk.lumberjack_django.LumberjackDjangoMiddleware",
 ]
 ```
 
 The middleware automatically:
+
 - Starts a new trace for each request
 - Captures request metadata (headers, query params, etc.)
 - Completes the trace when the request finishes
@@ -92,4 +97,4 @@ curl http://localhost:8000/error/
 curl http://localhost:8000/slow/
 ```
 
-Each request will be automatically traced and logged to Treebeard with context preserved throughout the request lifecycle.
+Each request will be automatically traced and logged to Lumberjack with context preserved throughout the request lifecycle.

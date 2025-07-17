@@ -5,15 +5,15 @@ from .span import end_span, record_exception_on_span, start_span
 from .spans import SpanKind, SpanStatus, SpanStatusCode
 
 
-def treebeard_trace(name: Optional[str] = None):
+def lumberjack_trace(name: Optional[str] = None):
     """
     Decorator to clear contextvars after function completes.
     Usage:
-        @treebeard_trace
+        @lumberjack_trace
         def ...
 
         or with a name:
-        @treebeard_trace(name="my_trace")
+        @lumberjack_trace(name="my_trace")
         def ...
 
     Args:

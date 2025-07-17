@@ -1,6 +1,6 @@
 # Flask Basic Example
 
-This example demonstrates how to use Treebeard logging in a Flask application, showing logging across multiple levels of the application.
+This example demonstrates how to use Lumberjack logging in a Flask application, showing logging across multiple levels of the application.
 
 ## Setup
 
@@ -11,12 +11,12 @@ This example demonstrates how to use Treebeard logging in a Flask application, s
 2. Install dependencies:
    pip install -r requirements.txt
 
-   Note: To use the local Treebeard library, add the following to your requirements.txt:
+   Note: To use the local Lumberjack library, add the following to your requirements.txt:
    -e ../..
 
-   This will install the Treebeard package from the parent directory in development mode.
+   This will install the Lumberjack package from the parent directory in development mode.
 
-3. Install the local Treebeard library:
+3. Install the local Lumberjack library:
 
    If you encounter an error about missing setup.py when using editable installs,
    create a minimal setup.py file in the root directory with:
@@ -25,8 +25,8 @@ This example demonstrates how to use Treebeard logging in a Flask application, s
    from setuptools import setup, find_packages
 
    setup(
-       name="treebeard",
-       version="0.1.0",
+       name="lumberjack",
+       version="0.5.0",
        packages=find_packages(),
    )
    ```

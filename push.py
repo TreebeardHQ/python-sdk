@@ -68,7 +68,7 @@ def main():
     # Update versions
     new_version = update_version('pyproject.toml', current_version, args.dev)
     update_version('setup.py', current_version, args.dev)
-    update_version('src/treebeardhq/version/__init__.py',
+    update_version('src/lumberjack_sdk/version/__init__.py',
                    current_version, args.dev)
     print(f"Updated version to {new_version}")
 

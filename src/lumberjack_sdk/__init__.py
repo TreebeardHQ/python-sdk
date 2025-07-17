@@ -1,9 +1,9 @@
 """
-TreebeardHQ - A Python library for forwarding logs and spans to endpoints
+Lumberjack - A Python observability library
 """
 
 from .context import LoggingContext
-from .core import Treebeard
+from .core import Lumberjack
 from .log import Log
 from .span import (
     end_span,
@@ -14,14 +14,14 @@ from .span import (
     start_span
 )
 from .spans import SpanKind, SpanStatus, SpanStatusCode
-from .treebeard_flask import TreebeardFlask
-from .treebeard_trace import treebeard_trace
+from .lumberjack_flask import LumberjackFlask
+from .lumberjack_trace import lumberjack_trace
 from .version import __version__
 
 
 __all__ = [
-    "Treebeard", "LoggingContext", "Log",
-    "TreebeardFlask", "treebeard_trace",
+    "Lumberjack", "LoggingContext", "Log",
+    "LumberjackFlask", "lumberjack_trace",
     "start_span", "end_span", "span_context", "get_current_span", "get_current_trace_id",
     "record_exception_on_span", "SpanKind", "SpanStatus", "SpanStatusCode"
 ]

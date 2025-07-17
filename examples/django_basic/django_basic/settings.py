@@ -48,7 +48,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "treebeardhq.treebeard_django.TreebeardDjangoMiddleware",
+    "lumberjack.lumberjack_django.LumberjackDjangoMiddleware",
 ]
 
 ROOT_URLCONF = "django_basic.urls"
@@ -123,6 +123,6 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Treebeard configuration
-# Set your Treebeard API key as an environment variable:
-# export TREEBEARD_API_KEY="your-api-key-here"
+# Lumberjack configuration
+# Set your Lumberjack API key as an environment variable:
+# export LUMBERJACK_API_KEY="your-api-key-here"

@@ -1,5 +1,5 @@
 """
-Thread-local context for Treebeard logging and spans.
+Thread-local context for Lumberjack logging and spans.
 
 This module provides context storage for logging and span tracking using contextvars,
 which works across different concurrency models including:
@@ -11,14 +11,14 @@ which works across different concurrency models including:
 import contextvars
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional
 
-from treebeardhq.constants import TRACE_NAME_KEY_RESERVED_V2
+from lumberjack_sdk.constants import TRACE_NAME_KEY_RESERVED_V2
 
 if TYPE_CHECKING:
     from .spans import Span, SpanContext
 
 
 class LoggingContext:
-    """Context storage for Treebeard logging and spans.
+    """Context storage for Lumberjack logging and spans.
 
     This class stores logging context data and span context using contextvars,
     ensuring proper context isolation across different concurrency models.
@@ -91,7 +91,7 @@ class LoggingContext:
     @classmethod
     def push_span(cls, span: "Span") -> None:
         """Push a span onto the current context stack.
-        
+
         Args:
             span: The span to push onto the stack
         """
@@ -105,7 +105,7 @@ class LoggingContext:
     @classmethod
     def pop_span(cls) -> Optional["Span"]:
         """Pop the current span from the context stack.
-        
+
         Returns:
             The popped span, or None if the stack is empty
         """
@@ -122,7 +122,7 @@ class LoggingContext:
     @classmethod
     def get_current_span(cls) -> Optional["Span"]:
         """Get the current active span without removing it from the stack.
-        
+
         Returns:
             The current active span, or None if no span is active
         """
@@ -135,7 +135,7 @@ class LoggingContext:
     @classmethod
     def get_span_context(cls) -> Optional["SpanContext"]:
         """Get the current span context.
-        
+
         Returns:
             The current span context derived from the active span, or None
         """
@@ -157,7 +157,7 @@ class LoggingContext:
     @classmethod
     def get_trace_id(cls) -> Optional[str]:
         """Get the current trace ID from the active span.
-        
+
         Returns:
             The current trace ID, or None if no span is active
         """

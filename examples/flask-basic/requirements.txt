@@ -1,2 +1,2 @@
 flask>=2.0.0
-treebeard>=0.1.0
+lumberjack>=0.1.0

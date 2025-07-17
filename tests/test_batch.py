@@ -4,7 +4,7 @@ from datetime import timedelta
 import pytest
 from freezegun import freeze_time
 
-from treebeardhq.batch import LogBatch
+from lumberjack_sdk.batch import LogBatch
 
 
 @pytest.mark.usefixtures("reset_context")

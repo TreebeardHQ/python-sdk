@@ -1,16 +1,16 @@
 from setuptools import find_packages, setup
 
 # Determine the package name and directory
-package_name = "treebeardhq"
+package_name = "lumberjack"
 
 setup(
     name=package_name,
-    version="0.4.12dev0",
+    version="0.4.18",
     packages=find_packages(include=[package_name, f"{package_name}.*"]),
-    description="Treebeard logging library",
+    description="Lumberjack logging library",
     author="George Mayer",
     author_email="george@treebeardhq.com",
-    url="https://github.com/treebeardhq/sdk-python",
+    url="https://github.com/treebeardhq/lumberjack-sdk-python",
     python_requires=">=3.8",
     install_requires=[
         # Add your dependencies here
