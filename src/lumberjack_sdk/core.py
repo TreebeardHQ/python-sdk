@@ -93,7 +93,7 @@ signal.signal(signal.SIGTERM, _handle_shutdown)
 # Constants
 DEFAULT_BATCH_SIZE = 500
 DEFAULT_BATCH_AGE = 30.0
-DEFAULT_API_URL = 'https://api.lumberjack.com/logs/batch'
+DEFAULT_API_URL = 'https://api.trylumberjack.com/logs/batch'
 
 
 class Lumberjack:

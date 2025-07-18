@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lumberjack_sdk"
-version = "0.4.18"
+version = "0.4.21"
 authors = [
     { name = "George Mayer", email = "george@treebeardhq.com" },
 ]
@@ -49,7 +49,6 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "0.4.18"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
