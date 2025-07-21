@@ -1,20 +1,20 @@
-# Treebeard
+# Lumberjack
 
-Treebeard is a Python library for efficient log forwarding with support for trace contexts and batched logging.
+Lumberjack is a Python library for efficient log forwarding with support for trace contexts and batched logging.
 
 ## Installation
 
 ```bash
-pip install treebeardhq
+pip install lumberjack
 ```
 
 ## Quick Start
 
 ```python
-from treebeardhq import Treebeard, Log
+from lumberjack_sdk import Lumberjack, Log
 
-# Initialize Treebeard with your API key
-Treebeard.init(
+# Initialize Lumberjack with your API key
+Lumberjack.init(
     api_key="your-api-key",
     endpoint="https://your-logging-endpoint.com/logs"
 )
@@ -40,7 +40,7 @@ except Exception as e:
 
 ## Logging Levels
 
-Treebeard supports multiple logging levels:
+Lumberjack supports multiple logging levels:
 
 ```python
 Log.debug("Debug information")
@@ -80,10 +80,10 @@ Log.debug("Validating card details")
 
 ## Configuration Options
 
-When initializing Treebeard, you can configure several options:
+When initializing Lumberjack, you can configure several options:
 
 ```python
-Treebeard.init(
+Lumberjack.init(
     api_key="your-api-key",
     endpoint="https://your-logging-endpoint.com/logs",
     debug_mode=True,  # Enable debug output
@@ -95,7 +95,7 @@ Treebeard.init(
 
 ## Thread Safety
 
-Treebeard is thread-safe and supports different threading modes:
+Lumberjack is thread-safe and supports different threading modes:
 
 - Standard Python threading (default)
 - Eventlet

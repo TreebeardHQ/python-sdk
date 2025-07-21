@@ -1,5 +1,5 @@
 """
-Flask instrumentation for Treebeard.
+Flask instrumentation for Lumberjack.
 
 This module provides Flask integration to automatically clear context variables
 when a request ends.
@@ -7,15 +7,15 @@ when a request ends.
 import importlib
 import traceback
 
-from .core import Treebeard
+from .core import Lumberjack
 from .span import end_span, record_exception_on_span, start_span
 from .spans import SpanKind, SpanStatus, SpanStatusCode
 
 from .internal_utils.fallback_logger import sdk_logger
 
 
-class TreebeardFlask:
-    """Flask instrumentation for Treebeard."""
+class LumberjackFlask:
+    """Flask instrumentation for Lumberjack."""
 
     @staticmethod
     def _get_request():
@@ -23,7 +23,7 @@ class TreebeardFlask:
             return importlib.import_module("flask").request
         except Exception as e:
             sdk_logger.error(
-                f"Error in TreebeardFlask._get_request : {str(e)}: {traceback.format_exc()}")
+                f"Error in LumberjackFlask._get_request : {str(e)}: {traceback.format_exc()}")
             return None
 
     @staticmethod
@@ -35,21 +35,21 @@ class TreebeardFlask:
         """
 
         if not app:
-            sdk_logger.error("TreebeardFlask: No app provided")
+            sdk_logger.error("LumberjackFlask: No app provided")
             return
 
-        if getattr(app, "_treebeard_instrumented", False):
+        if getattr(app, "_lumberjack_instrumented", False):
             return
 
         try:
             sdk_logger.info(
-                "TreebeardFlask: Instrumenting Flask application")
+                "LumberjackFlask: Instrumenting Flask application")
 
             @app.before_request
             def start_trace():
                 """Start a new span when a request starts."""
                 try:
-                    request = TreebeardFlask._get_request()
+                    request = LumberjackFlask._get_request()
 
                     # Get the route pattern (e.g., '/user/<id>' instead of '/user/123')
                     if request.url_rule:
@@ -64,10 +64,10 @@ class TreebeardFlask:
                     traceparent = request.headers.get('traceparent')
                     if traceparent:
                         # Parse W3C traceparent header
-                        parsed = Treebeard.parse_traceparent(traceparent)
+                        parsed = Lumberjack.parse_traceparent(traceparent)
                         if parsed:
                             # Establish trace context from parent
-                            span_context = Treebeard.establish_trace_context(
+                            span_context = Lumberjack.establish_trace_context(
                                 trace_id=parsed['trace_id'],
                                 parent_span_id=parsed['parent_id']
                             )
@@ -131,13 +131,13 @@ class TreebeardFlask:
 
                 except Exception as e:
                     sdk_logger.error(
-                        f"Error in TreebeardFlask.start_trace : {str(e)}: {traceback.format_exc()}")
+                        f"Error in LumberjackFlask.start_trace : {str(e)}: {traceback.format_exc()}")
 
             @app.teardown_request
             def clear_context(exc):
                 try:
                     """Clear the logging context and end span when a request ends."""
-                    from treebeardhq.context import LoggingContext
+                    from lumberjack_sdk.context import LoggingContext
 
                     # End the current span
                     current_span = LoggingContext.get_current_span()
@@ -154,11 +154,11 @@ class TreebeardFlask:
 
                 except Exception as e:
                     sdk_logger.error(
-                        f"Error in TreebeardFlask.clear_context: "
+                        f"Error in LumberjackFlask.clear_context: "
                         f"{str(e)}: {traceback.format_exc()}")
 
-            app._treebeard_instrumented = True
+            app._lumberjack_instrumented = True
         except Exception as e:
             sdk_logger.error(
-                f"Error in TreebeardFlask.instrument: "
+                f"Error in LumberjackFlask.instrument: "
                 f"{str(e)}: {traceback.format_exc()}")

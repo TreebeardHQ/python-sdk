@@ -1,5 +1,5 @@
 """
-Logging utility module for Treebeard.
+Logging utility module for Lumberjack.
 
 This module provides logging context management functionality,
 allowing creation and management of trace contexts.
@@ -36,10 +36,9 @@ from .constants import (
     TS_KEY,
 )
 from .context import LoggingContext
-from .core import Treebeard
+from .core import Lumberjack
 from .internal_utils.fallback_logger import sdk_logger
 
-dev_logger = logging.getLogger("dev")
 
 level_map = {
     logging.DEBUG: 'debug',
@@ -52,38 +51,32 @@ level_map = {
 }
 
 
-class TreebeardHandler(logging.Handler):
-    """Custom logging handler that forwards Python logger messages to Treebeard."""
+class LumberjackHandler(logging.Handler):
+    """Custom logging handler that forwards Python logger messages to Lumberjack."""
 
     def emit(self, record: logging.LogRecord) -> None:
         """
-        Process and forward a log record to the Treebeard system.
+        Process and forward a log record to the Lumberjack system.
 
         Args:
             record: The LogRecord instance containing log data
         """
+        # Check if we're already processing a log to prevent recursion
+        if getattr(_handler_guard, 'processing', False):
+            return
+            
+        _handler_guard.processing = True
         try:
             # Skip logs from the SDK itself to avoid infinite recursion
             if (
-                'treebeard' in record.name.lower() or
-                'treebeardhq' in record.pathname or
-                record.name == 'treebeard.sdk'
+                'lumberjack' in record.name.lower() or
+                'lumberjack' in record.pathname or
+                record.name == 'lumberjack.sdk'
             ):
                 return
 
-            # Map standard Python logging levels to Treebeard levels
-            level_map = {
-                logging.DEBUG: 'debug',
-                logging.INFO: 'info',
-                logging.WARNING: 'warning',
-                logging.WARN: 'warning',  # deprecated but still used
-                logging.ERROR: 'error',
-                logging.CRITICAL: 'critical',
-                logging.FATAL: 'critical'  # alias for CRITICAL
-            }
-
             # Get the mapped level, default to 'info'
-            treebeard_level = level_map.get(record.levelno, 'info')
+            lumberjack_level = level_map.get(record.levelno, 'info')
 
             # Format the message (handles args formatting)
             message = record.getMessage()
@@ -138,7 +131,7 @@ class TreebeardHandler(logging.Handler):
                 }:
                     metadata[key] = value
 
-            # Send to Treebeard using the same path as other Log methods
+            # Send to Lumberjack using the same path as other Log methods
             # This ensures consistent handling of trace_id, context, etc.
             log_method_map = {
                 'debug': Log.debug,
@@ -148,16 +141,21 @@ class TreebeardHandler(logging.Handler):
                 'critical': Log.critical
             }
 
-            log_method = log_method_map.get(treebeard_level, Log.info)
+            log_method = log_method_map.get(lumberjack_level, Log.info)
             log_method(message, metadata)
 
         except Exception as e:
             # Don't let handler errors break the application
-            sdk_logger.error(f"Error in TreebeardHandler: {str(e)}")
+            sdk_logger.error(f"Error in LumberjackHandler: {str(e)}")
+        finally:
+            _handler_guard.processing = False
 
 
 # Global handler instance
-_treebeard_handler: Optional[TreebeardHandler] = None
+_lumberjack_handler: Optional[LumberjackHandler] = None
+
+# Thread-local guard to prevent recursive logging
+_handler_guard = threading.local()
 
 
 masked_terms = {
@@ -193,7 +191,7 @@ class Log:
             # don't take a frame from the SDK wrapper
             for frame_info in inspect.stack():
                 frame_file = frame_info.filename
-                if "treebeardhq" not in frame_file and "<frozen" not in frame_file:
+                if "lumberjack" not in frame_file and "<frozen" not in frame_file:
                     filename = frame_file
                     line_number = frame_info.lineno
                     function_name = frame_info.function
@@ -226,7 +224,7 @@ class Log:
             processed_data[FUNCTION_KEY_RESERVED_V2] = function_name
             # if we haven't set the source upstream, it's from our SDK
             if not log_data.get(SOURCE_KEY_RESERVED_V2):
-                log_data[SOURCE_KEY_RESERVED_V2] = "treebeard"
+                log_data[SOURCE_KEY_RESERVED_V2] = "lumberjack"
 
             for key, value in log_data.items():
                 if value is None:
@@ -311,7 +309,7 @@ class Log:
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
             log_data[LEVEL_KEY_RESERVED_V2] = 'debug'
-            Treebeard().add(log_data)
+            Lumberjack().add(log_data)
         except Exception as e:
             sdk_logger.error(
                 f"Error in Log.debug : {str(e)}: {traceback.format_exc()}")
@@ -328,7 +326,7 @@ class Log:
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
             log_data[LEVEL_KEY_RESERVED_V2] = 'info'
-            Treebeard().add(log_data)
+            Lumberjack().add(log_data)
         except Exception as e:
             sdk_logger.error(
                 f"Error in Log.info : {str(e)}: {traceback.format_exc()}")
@@ -345,7 +343,7 @@ class Log:
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
             log_data[LEVEL_KEY_RESERVED_V2] = 'warning'
-            Treebeard().add(log_data)
+            Lumberjack().add(log_data)
         except Exception as e:
             sdk_logger.error(
                 f"Error in Log.warning : {str(e)}: {traceback.format_exc()}")
@@ -377,7 +375,7 @@ class Log:
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
             log_data[LEVEL_KEY_RESERVED_V2] = 'error'
-            Treebeard().add(log_data)
+            Lumberjack().add(log_data)
         except Exception as e:
             sdk_logger.error(
                 f"Error in Log.error : {str(e)}: {traceback.format_exc()}")
@@ -394,7 +392,7 @@ class Log:
         try:
             log_data = Log._prepare_log_data(message, data, **kwargs)
             log_data[LEVEL_KEY_RESERVED_V2] = 'critical'
-            Treebeard().add(log_data)
+            Lumberjack().add(log_data)
         except Exception as e:
             sdk_logger.error(
                 f"Error in Log.critical : {str(e)}: {traceback.format_exc()}")
@@ -420,8 +418,8 @@ class Log:
             LoggingContext.clear()
 
             # Call the original exception handler
-            if Treebeard._original_excepthook is not None:
-                Treebeard._original_excepthook(
+            if Lumberjack._original_excepthook is not None:
+                Lumberjack._original_excepthook(
                     exc_type, exc_value, exc_traceback)
 
         except Exception as e:
@@ -449,8 +447,8 @@ class Log:
             LoggingContext.clear()
 
         # Call the original exception handler
-            if Treebeard._original_threading_excepthook is not None:
-                Treebeard._original_threading_excepthook(args)
+            if Lumberjack._original_threading_excepthook is not None:
+                Lumberjack._original_threading_excepthook(args)
         except Exception:
             sdk_logger.error("Handled exception in SDK")
 
@@ -489,8 +487,8 @@ class Log:
             LoggingContext.clear()
 
         # Call the original exception handler
-            if Treebeard._original_loop_exception_handler is not None:
-                Treebeard._original_loop_exception_handler(loop, context)
+            if Lumberjack._original_loop_exception_handler is not None:
+                Lumberjack._original_loop_exception_handler(loop, context)
         except Exception:
             sdk_logger.error("Handled exception in SDK")
 
@@ -601,49 +599,49 @@ class Log:
                                         logger_name: Optional[str] = None,
                                         ) -> None:
         """
-        Enable forwarding of Python logger messages to Treebeard.
+        Enable forwarding of Python logger messages to Lumberjack.
 
         Args:
             level: The minimum logging level to capture (default: DEBUG)
             logger_name: Specific logger name to attach to, or None for root logger
         """
-        global _treebeard_handler
+        global _lumberjack_handler
 
-        if _treebeard_handler is None:
-            _treebeard_handler = TreebeardHandler()
-            _treebeard_handler.setLevel(level)
+        if _lumberjack_handler is None:
+            _lumberjack_handler = LumberjackHandler()
+            _lumberjack_handler.setLevel(level)
 
             # Get the target logger (root logger if no name specified)
             target_logger = logging.getLogger(logger_name)
-            target_logger.addHandler(_treebeard_handler)
+            target_logger.addHandler(_lumberjack_handler)
 
             # Ensure the logger level allows our handler to receive messages
             if target_logger.level > level:
                 target_logger.setLevel(level)
 
             sdk_logger.debug(
-                f"Treebeard Python logger forwarding enabled for logger: {logger_name or 'root'}")
+                f"Lumberjack Python logger forwarding enabled for logger: {logger_name or 'root'}")
 
     @staticmethod
     def disable_python_logger_forwarding(logger_name: Optional[str] = None) -> None:
         """
-        Disable forwarding of Python logger messages to Treebeard.
+        Disable forwarding of Python logger messages to Lumberjack.
 
         Args:
             logger_name: Specific logger name to detach from, or None for root logger
         """
-        global _treebeard_handler
+        global _lumberjack_handler
 
-        if _treebeard_handler is not None:
+        if _lumberjack_handler is not None:
             target_logger = logging.getLogger(logger_name)
-            target_logger.removeHandler(_treebeard_handler)
+            target_logger.removeHandler(_lumberjack_handler)
 
             # Only clear the global handler if we're removing from root logger
             if logger_name is None:
-                _treebeard_handler = None
+                _lumberjack_handler = None
 
             sdk_logger.debug(
-                f"Treebeard Python logger forwarding disabled for logger: {logger_name or 'root'}")
+                f"Lumberjack Python logger forwarding disabled for logger: {logger_name or 'root'}")
 
     @staticmethod
     def is_python_logger_forwarding_enabled() -> bool:
@@ -653,11 +651,11 @@ class Log:
         Returns:
             True if Python logger forwarding is enabled, False otherwise
         """
-        return _treebeard_handler is not None
+        return _lumberjack_handler is not None
 
 
-Treebeard.register_exception_handlers(Log._handle_exception,
-                                      Log._handle_threading_exception, Log._handle_async_exception)
+Lumberjack.register_exception_handlers(Log._handle_exception,
+                                       Log._handle_threading_exception, Log._handle_async_exception)
 
 
 def mask_pw(match):
@@ -666,7 +664,7 @@ def mask_pw(match):
 
 # print overrides
 class StdoutOverride:
-    """Class to override stdout and log printed messages through Treebeard."""
+    """Class to override stdout and log printed messages through Lumberjack."""
 
     _original_stdout: Optional[TextIO] = None
     _enabled: bool = False
@@ -678,7 +676,7 @@ class StdoutOverride:
             cls._original_stdout = sys.stdout
             sys.stdout = StdoutWriter(cls._original_stdout)
             cls._enabled = True
-            sdk_logger.debug("Treebeard stdout override enabled")
+            sdk_logger.debug("Lumberjack stdout override enabled")
 
     @classmethod
     def disable(cls) -> None:
@@ -687,7 +685,7 @@ class StdoutOverride:
             sys.stdout = cls._original_stdout
             cls._original_stdout = None
             cls._enabled = False
-            sdk_logger.debug("Treebeard stdout override disabled")
+            sdk_logger.debug("Lumberjack stdout override disabled")
 
     @classmethod
     def is_enabled(cls) -> bool:
@@ -699,7 +697,7 @@ _guard = threading.local()
 
 
 class StdoutWriter:
-    """Custom stdout writer that logs messages through Treebeard."""
+    """Custom stdout writer that logs messages through Lumberjack."""
 
     def __init__(self, original_stdout: TextIO):
         """Initialize with the original stdout to forward output."""
@@ -726,7 +724,7 @@ class StdoutWriter:
                 # Strip whitespace to clean up the log
                 clean_text = text.rstrip()
                 if clean_text:
-                    # Find caller information outside the Treebeard module
+                    # Find caller information outside the Lumberjack module
                     # Log the printed text as info
                     Log.info(clean_text, {
                         SOURCE_KEY_RESERVED_V2: "print"

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from treebeardhq.code_snippets import CodeSnippetExtractor, format_code_snippet, FrameInfo
+from lumberjack_sdk.code_snippets import CodeSnippetExtractor, format_code_snippet, FrameInfo
 
 
 class TestCodeSnippetExtractor(unittest.TestCase):
@@ -47,10 +47,12 @@ class TestCodeSnippetExtractor(unittest.TestCase):
         # Test Python internals
         self.assertTrue(self.extractor._should_exclude_file('<built-in>'))
         self.assertTrue(self.extractor._should_exclude_file('<frozen>'))
-        
+
         # Test exclude patterns
-        self.assertTrue(self.extractor._should_exclude_file('/path/test_exclude/file.py'))
-        self.assertFalse(self.extractor._should_exclude_file('/path/normal/file.py'))
+        self.assertTrue(self.extractor._should_exclude_file(
+            '/path/test_exclude/file.py'))
+        self.assertFalse(self.extractor._should_exclude_file(
+            '/path/normal/file.py'))
 
     def test_read_source_lines_success(self):
         """Test successful source file reading."""
@@ -141,29 +143,29 @@ class TestCodeSnippetExtractor(unittest.TestCase):
             # Execute the code to create an exception with traceback
             with open(temp_file, 'r') as f:
                 code = f.read()
-            
+
             global_vars = {'__file__': temp_file}
             try:
                 exec(code, global_vars)
                 exec('test_function()', global_vars)
             except Exception as e:
                 frames = self.extractor.extract_from_exception(e)
-                
+
                 # Should have at least one frame
                 self.assertGreater(len(frames), 0)
-                
+
                 # Check the frame that contains our test code
                 test_frame = None
                 for frame in frames:
                     if frame['filename'] == temp_file:
                         test_frame = frame
                         break
-                
+
                 if test_frame:
                     self.assertEqual(test_frame['function'], 'test_function')
                     self.assertEqual(test_frame['lineno'], 4)
-                    self.assertIn('raise ValueError("test error")', 
-                                test_frame['code_snippet'])
+                    self.assertIn('raise ValueError("test error")',
+                                  test_frame['code_snippet'])
         finally:
             os.unlink(temp_file)
 
@@ -182,10 +184,10 @@ class TestFrameInfo(unittest.TestCase):
             'error_line_index': 2,
             'locals': None
         }
-        
+
         result = format_code_snippet(frame_info)
         lines = result.split('\n')
-        
+
         self.assertEqual(len(lines), 3)
         self.assertIn('def test_func():', lines[0])
         self.assertIn('x = 1', lines[1])
@@ -203,10 +205,10 @@ class TestFrameInfo(unittest.TestCase):
             'error_line_index': 2,
             'locals': None
         }
-        
+
         result = format_code_snippet(frame_info, show_line_numbers=False)
         lines = result.split('\n')
-        
+
         self.assertEqual(len(lines), 3)
         self.assertTrue(lines[2].startswith('>'))  # Error line marker
         self.assertNotIn('5', lines[2])  # No line number
@@ -222,10 +224,10 @@ class TestFrameInfo(unittest.TestCase):
             'error_line_index': 2,
             'locals': None
         }
-        
+
         result = format_code_snippet(frame_info, highlight_error=False)
         lines = result.split('\n')
-        
+
         self.assertEqual(len(lines), 3)
         self.assertIn(' 5 ', lines[2])  # Line number without error marker
         self.assertNotIn('>', lines[2])  # No error marker
@@ -241,7 +243,7 @@ class TestFrameInfo(unittest.TestCase):
             'error_line_index': -1,
             'locals': None
         }
-        
+
         result = format_code_snippet(frame_info)
         self.assertEqual(result, "")
 
@@ -256,7 +258,7 @@ class TestCodeSnippetIntegration(unittest.TestCase):
             x = 10
             y = 0
             return x / y  # This will raise ZeroDivisionError
-        
+
         exception = None
         try:
             test_function()
@@ -264,26 +266,27 @@ class TestCodeSnippetIntegration(unittest.TestCase):
             exception = e
 
         self.assertIsNotNone(exception)
-        
+
         # Extract code snippets
         extractor = CodeSnippetExtractor(context_lines=2)
         frames = extractor.extract_from_exception(exception)
-        
+
         # Should have at least one frame
         self.assertGreater(len(frames), 0)
-        
+
         # Look for the test_function frame
         test_frame = None
         for frame in frames:
             if frame['function'] == 'test_function':
                 test_frame = frame
                 break
-        
+
         # If we found the test_function frame, verify it has code
         if test_frame:
             # Check that the error line is captured
-            self.assertTrue(any('x / y' in line for line in test_frame['code_snippet']))
-            
+            self.assertTrue(
+                any('x / y' in line for line in test_frame['code_snippet']))
+
             # Test formatting
             formatted = format_code_snippet(test_frame)
             self.assertIn('x / y', formatted)

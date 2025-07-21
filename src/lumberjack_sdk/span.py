@@ -163,27 +163,27 @@ def record_exception_on_span(
     if escaped:
         attributes["exception.escaped"] = "true"
 
-    # Get configuration from Treebeard singleton for code snippet capture
-    from .core import Treebeard
-    treebeard_instance = Treebeard()
+    # Get configuration from Lumberjack singleton for code snippet capture
+    from .core import Lumberjack
+    lumberjack_instance = Lumberjack()
 
     # Use provided params or fall back to global config
     capture_enabled = (
         capture_code_snippets if capture_code_snippets is not None
-        else treebeard_instance.code_snippet_enabled
+        else lumberjack_instance.code_snippet_enabled
     )
     context_lines_count = (
         context_lines if context_lines is not None
-        else treebeard_instance.code_snippet_context_lines
+        else lumberjack_instance.code_snippet_context_lines
     )
 
     # Capture code snippets if enabled
     if capture_enabled:
         extractor = CodeSnippetExtractor(
             context_lines=context_lines_count,
-            max_frames=treebeard_instance.code_snippet_max_frames,
+            max_frames=lumberjack_instance.code_snippet_max_frames,
             capture_locals=False,
-            exclude_patterns=treebeard_instance.code_snippet_exclude_patterns
+            exclude_patterns=lumberjack_instance.code_snippet_exclude_patterns
         )
         frame_infos = extractor.extract_from_exception(exception)
     else:
@@ -268,8 +268,8 @@ def span_context(
 def _submit_span_to_core(span: Span) -> None:
     """Submit a span to the core for batching."""
     try:
-        from .core import Treebeard
-        instance = Treebeard()
+        from .core import Lumberjack
+        instance = Lumberjack()
         instance.add_span(span)
     except (ImportError, AttributeError):
         # Core not available, skip for now

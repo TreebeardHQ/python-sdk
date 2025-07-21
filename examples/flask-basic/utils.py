@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from treebeard import Log
+from lumberjack_sdk import Log
 
 
 def load_products():

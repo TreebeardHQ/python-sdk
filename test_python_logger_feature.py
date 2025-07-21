@@ -5,17 +5,17 @@ Manual test script for the Python logger integration feature.
 
 import logging
 
-from treebeardhq.core import Treebeard
-from treebeardhq.log import Log
+from lumberjack_sdk.core import Lumberjack
+from lumberjack_sdk.log import Log
 
 
 def test_basic_functionality():
     """Test basic Python logger forwarding functionality."""
     print("=== Testing Basic Python Logger Forwarding ===")
 
-    # Initialize Treebeard with Python logger capture enabled
-    Treebeard.reset()
-    Treebeard.init(
+    # Initialize Lumberjack with Python logger capture enabled
+    Lumberjack.reset()
+    Lumberjack.init(
         api_key="test-key",
         endpoint="http://test-endpoint.com",
         capture_python_logger=True,
@@ -54,8 +54,8 @@ def test_manual_enable_disable():
     print("\n=== Testing Manual Enable/Disable ===")
 
     # Reset to clean state
-    Treebeard.reset()
-    Treebeard.init(api_key="test-key")
+    Lumberjack.reset()
+    Lumberjack.init(api_key="test-key")
 
     logger = logging.getLogger("manual.test")
 

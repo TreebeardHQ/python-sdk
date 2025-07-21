@@ -1,7 +1,8 @@
 """
-Core functionality for the treebeard library.
+Core functionality for the lumberjack library.
 """
 import asyncio
+import atexit
 import json
 import logging
 import os
@@ -15,7 +16,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from termcolor import colored
 
-from treebeardhq.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, FlushTimerWorker
+from lumberjack_sdk.internal_utils.flush_timer import DEFAULT_FLUSH_INTERVAL, FlushTimerWorker
 from .version import __version__
 
 from .batch import LogBatch, ObjectBatch, SpanBatch
@@ -49,7 +50,7 @@ from .constants import (
     LogEntry,
 )
 from .context import LoggingContext
-from .exporters import TreebeardExporter
+from .exporters import LumberjackExporter
 from .internal_utils.fallback_logger import fallback_logger, sdk_logger
 from .spans import SpanContext
 
@@ -66,38 +67,57 @@ has_warned = False
 found_api_key = False
 
 
-# Handle shutdown signals
+# Global flag to track if signal handlers are installed
+_signal_handlers_installed = False
+_original_sigint_handler = None
+_original_sigterm_handler = None
+_shutdown_lock = threading.Lock()
+_is_shutting_down = False
 
 
 def _handle_shutdown(sig, frame):
+    """Handle shutdown signals gracefully."""
+    global _is_shutting_down
+
+    with _shutdown_lock:
+        if _is_shutting_down:
+            # Already shutting down, ignore duplicate signals
+            return
+        _is_shutting_down = True
+
     curr_time = round(time.time() * 1000)
     sdk_logger.info(
-        "Shutdown signal received, flushing logs, objects, and spans...")
-    treebeard_instance = Treebeard()
-    treebeard_instance.flush()
-    treebeard_instance.flush_objects()
-    treebeard_instance.flush_spans()
+        f"Shutdown signal {sig} received, flushing logs, objects, and spans...")
 
-    if Treebeard._instance and Treebeard._instance._flush_timer:
-        Treebeard._instance._flush_timer.stop()
-    if Treebeard._instance and Treebeard._instance._exporter:
-        Treebeard._instance._exporter.stop_worker()
+    try:
+        if Lumberjack._instance:
+            Lumberjack._instance.shutdown()
+    except Exception as e:
+        sdk_logger.error(f"Error during shutdown: {e}")
 
     sdk_logger.info(
         f"Shutdown complete, took {round(time.time() * 1000) - curr_time} ms")
 
+    # Call original handlers if they exist
+    if sig == signal.SIGINT and _original_sigint_handler:
+        if callable(_original_sigint_handler):
+            _original_sigint_handler(sig, frame)
+    elif sig == signal.SIGTERM and _original_sigterm_handler:
+        if callable(_original_sigterm_handler):
+            _original_sigterm_handler(sig, frame)
+    else:
+        # Default behavior - exit
+        sys.exit(0)
 
-signal.signal(signal.SIGINT, _handle_shutdown)
-signal.signal(signal.SIGTERM, _handle_shutdown)
 
 # Constants
 DEFAULT_BATCH_SIZE = 500
 DEFAULT_BATCH_AGE = 30.0
-DEFAULT_API_URL = 'https://api.treebeardhq.com/logs/batch'
+DEFAULT_API_URL = 'https://api.trylumberjack.com/logs/batch'
 
 
-class Treebeard:
-    _instance: Optional['Treebeard'] = None
+class Lumberjack:
+    _instance: Optional['Lumberjack'] = None
     _initialized = False
     _api_key: Optional[str] = None
     _debug_mode: bool = False
@@ -117,7 +137,7 @@ class Treebeard:
     _flush_timer: Optional[FlushTimerWorker] = None
 
     _config_version: Optional[int] = None
-    _exporter: Optional[TreebeardExporter] = None
+    _exporter: Optional[LumberjackExporter] = None
 
     _initialized = False
 
@@ -146,23 +166,24 @@ class Treebeard:
         code_snippet_max_frames: Optional[int] = None,
         code_snippet_exclude_patterns: Optional[List[str]] = None,
         debug_mode: Optional[bool] = None,
+        install_signal_handlers: Optional[bool] = None,
     ):
         """
-        Initialize the Treebeard class.
+        Initialize the Lumberjack class.
 
         Keyword Args:
-            project_name: The project name for the Treebeard project. This is used to
+            project_name: The project name for the Lumberjack project. This is used to
                 identify the project on the backend, so please be careful when changing it.
-            api_key: The API key for the Treebeard project or set TREEBEARD_API_KEY
+            api_key: The API key for the Lumberjack project or set LUMBERJACK_API_KEY
                 in your environment.
-            endpoint: (optional) The endpoint for the Treebeard project You may also set
-                TREEBEARD_API_URL in your environment or it will use the default
+            endpoint: (optional) The endpoint for the Lumberjack project You may also set
+                LUMBERJACK_API_URL in your environment or it will use the default
                 production endpoint
             batch_size: Configure the number of logs sent per batch
             batch_age: Configure how long to wait in between batches before sending logs
                 regardless of batch size
 
-            log_to_stdout: if true, Treebeard SDK will send everything to standard out
+            log_to_stdout: if true, Lumberjack SDK will send everything to standard out
                 that we also send to out API
             stdout_log_level: the level to log to stdout. Defaults to INFO.
                 Options: DEBUG, INFO, WARNING, ERROR, CRITICAL, FATAL, NOTSET
@@ -178,19 +199,24 @@ class Treebeard:
             python_logger_name: Specific logger name to capture from, or None for root logger.
                 Defaults to None (captures from root logger).
             debug_mode: Whether to enable debug mode. When True, sets the SDK logger level to DEBUG.
-                Can also be set via TREEBEARD_DEBUG_MODE environment variable.
+                Can also be set via LUMBERJACK_DEBUG_MODE environment variable.
+            install_signal_handlers: Whether to install SIGINT/SIGTERM handlers for graceful shutdown.
+                Defaults to True. Set to False when using in web frameworks like Flask that have
+                their own signal handling. Can also be set via LUMBERJACK_INSTALL_SIGNAL_HANDLERS
+                environment variable.
         """
 
         # accept some of these variables even if we've already initialized automatically
         if project_name is not None:
             # always accept the project name if it's provided
+            self.reset()
             self._project_name = project_name
 
-        if Treebeard._initialized:
+        if Lumberjack._initialized:
             return
 
         self._api_key = api_key if api_key else os.getenv(
-            'TREEBEARD_API_KEY')
+            'LUMBERJACK_API_KEY')
 
         if self._api_key and not isinstance(self._api_key, str):
             raise ValueError("API key must be a string")
@@ -198,7 +224,7 @@ class Treebeard:
         self._api_key = self._api_key.strip() if self._api_key else None
 
         self._endpoint = endpoint or os.getenv(
-            'TREEBEARD_API_URL', DEFAULT_API_URL)
+            'LUMBERJACK_API_URL', DEFAULT_API_URL)
         self._objects_endpoint = (
             self._endpoint.replace('/logs/batch', '/objects/register')
         )
@@ -206,28 +232,28 @@ class Treebeard:
             self._endpoint.replace('/logs/batch', '/spans/batch')
         )
         self._capture_stdout = capture_stdout if capture_stdout is not None else os.getenv(
-            'TREEBEARD_CAPTURE_STDOUT', True)
+            'LUMBERJACK_CAPTURE_STDOUT', True)
         self._log_to_stdout = log_to_stdout if log_to_stdout is not None else os.getenv(
-            'TREEBEARD_LOG_TO_STDOUT', False)
+            'LUMBERJACK_LOG_TO_STDOUT', False)
 
         self._stdout_log_level = stdout_log_level if stdout_log_level is not None else os.getenv(
-            'TREEBEARD_STDOUT_LOG_LEVEL', 'INFO')
+            'LUMBERJACK_STDOUT_LOG_LEVEL', 'INFO')
 
         self._capture_python_logger = (
             capture_python_logger if capture_python_logger is not None
-            else os.getenv('TREEBEARD_CAPTURE_PYTHON_LOGGER', True)
+            else os.getenv('LUMBERJACK_CAPTURE_PYTHON_LOGGER', True)
         )
         self._python_logger_level = (
             python_logger_level if python_logger_level is not None
-            else os.getenv('TREEBEARD_PYTHON_LOGGER_LEVEL', 'DEBUG')
+            else os.getenv('LUMBERJACK_PYTHON_LOGGER_LEVEL', 'DEBUG')
         )
         self._python_logger_name = (
             python_logger_name if python_logger_name is not None
-            else os.getenv('TREEBEARD_PYTHON_LOGGER_NAME', None)
+            else os.getenv('LUMBERJACK_PYTHON_LOGGER_NAME', None)
         )
 
         self._env = os.getenv('ENV', "production")
-        debug_mode_env = os.getenv('TREEBEARD_DEBUG_MODE')
+        debug_mode_env = os.getenv('LUMBERJACK_DEBUG_MODE')
         self._debug_mode = debug_mode if debug_mode is not None else (
             debug_mode_env.lower() == 'true' if debug_mode_env else False
         )
@@ -237,26 +263,26 @@ class Treebeard:
             sdk_logger.setLevel(logging.DEBUG)
 
         self._flush_interval = flush_interval if flush_interval is not None else os.getenv(
-            'TREEBEARD_FLUSH_INTERVAL', DEFAULT_FLUSH_INTERVAL)
+            'LUMBERJACK_FLUSH_INTERVAL', DEFAULT_FLUSH_INTERVAL)
 
         self._otel_format = otel_format if otel_format is not None else os.getenv(
-            'TREEBEARD_OTEL_FORMAT', False)
+            'LUMBERJACK_OTEL_FORMAT', False)
 
         # Initialize code snippet configuration
         self._code_snippet_enabled = (
             code_snippet_enabled if code_snippet_enabled is not None
-            else os.getenv('TREEBEARD_CODE_SNIPPET_ENABLED', 'true').lower() == 'true'
+            else os.getenv('LUMBERJACK_CODE_SNIPPET_ENABLED', 'true').lower() == 'true'
         )
         self._code_snippet_context_lines = (
             code_snippet_context_lines if code_snippet_context_lines is not None
-            else int(os.getenv('TREEBEARD_CODE_SNIPPET_CONTEXT_LINES', '5'))
+            else int(os.getenv('LUMBERJACK_CODE_SNIPPET_CONTEXT_LINES', '5'))
         )
         self._code_snippet_max_frames = (
             code_snippet_max_frames if code_snippet_max_frames is not None
-            else int(os.getenv('TREEBEARD_CODE_SNIPPET_MAX_FRAMES', '20'))
+            else int(os.getenv('LUMBERJACK_CODE_SNIPPET_MAX_FRAMES', '20'))
         )
         exclude_patterns_env = os.getenv(
-            'TREEBEARD_CODE_SNIPPET_EXCLUDE_PATTERNS', 'site-packages,venv,__pycache__')
+            'LUMBERJACK_CODE_SNIPPET_EXCLUDE_PATTERNS', 'site-packages,venv,__pycache__')
         self._code_snippet_exclude_patterns = (
             code_snippet_exclude_patterns if code_snippet_exclude_patterns is not None
             else [p.strip() for p in exclude_patterns_env.split(',') if p.strip()]
@@ -288,7 +314,7 @@ class Treebeard:
             Log.enable_python_logger_forwarding(
                 level=log_level, logger_name=self._python_logger_name)
 
-        Treebeard._initialized = True
+        Lumberjack._initialized = True
 
         # don't reset some of these if we've already initialized
         self._batch = LogBatch(max_size=batch_size, max_age=batch_age)
@@ -299,12 +325,12 @@ class Treebeard:
 
         if self._flush_timer is None:
             self._flush_timer = FlushTimerWorker(
-                treebeard_ref=self, interval=self._flush_interval)
+                lumberjack_ref=self, interval=self._flush_interval)
             self._flush_timer.start()
 
         # Initialize exporter if we have an API key
         if self._api_key and not self._using_fallback:
-            self._exporter = TreebeardExporter(
+            self._exporter = LumberjackExporter(
                 api_key=self._api_key,
                 endpoint=self._endpoint,
                 objects_endpoint=self._objects_endpoint,
@@ -314,20 +340,97 @@ class Treebeard:
 
         if self._api_key:
             sdk_logger.info(
-                f"Treebeard initialized with config: {self.__dict__}")
+                f"Lumberjack initialized with config: {self.__dict__}")
         else:
             sdk_logger.warning(
                 "No API key provided - using fallback logger.")
 
         # Print SDK version for debugging
-        sdk_logger.info(f"Treebeard SDK version: {__version__}")
+        sdk_logger.info(f"Lumberjack SDK version: {__version__}")
+
+        # Install signal handlers if requested
+        install_handlers_env = os.getenv('LUMBERJACK_INSTALL_SIGNAL_HANDLERS')
+        self._install_signal_handlers = (
+            install_signal_handlers if install_signal_handlers is not None
+            else (install_handlers_env.lower() != 'false' if install_handlers_env else True)
+        )
+
+        if self._install_signal_handlers:
+            self._setup_signal_handlers()
+
+        # Register atexit handler as a fallback
+        atexit.register(self._atexit_handler)
+
+    def _setup_signal_handlers(self) -> None:
+        """Install signal handlers for graceful shutdown."""
+        global _signal_handlers_installed, _original_sigint_handler, _original_sigterm_handler
+
+        if not _signal_handlers_installed:
+            # Save original handlers
+            _original_sigint_handler = signal.signal(
+                signal.SIGINT, _handle_shutdown)
+            _original_sigterm_handler = signal.signal(
+                signal.SIGTERM, _handle_shutdown)
+            _signal_handlers_installed = True
+            sdk_logger.debug("Signal handlers installed for graceful shutdown")
+
+    def _atexit_handler(self) -> None:
+        """Handle cleanup at exit time."""
+        global _is_shutting_down
+
+        with _shutdown_lock:
+            if _is_shutting_down:
+                return
+            _is_shutting_down = True
+
+        try:
+            self.shutdown()
+        except Exception as e:
+            sdk_logger.error(f"Error in atexit handler: {e}")
+
+    def shutdown(self) -> None:
+        """
+        Perform graceful shutdown of the SDK.
+
+        This method:
+        - Flushes all pending logs, objects, and spans
+        - Stops the flush timer
+        - Stops the exporter worker thread
+        - Cleans up resources
+
+        Call this method when your application is shutting down to ensure
+        all data is sent to Lumberjack.
+        """
+        if not self._initialized:
+            return
+
+        try:
+            # Flush all pending data
+            self.flush()
+            self.flush_objects()
+            self.flush_spans()
+
+            # Stop the flush timer
+            if self._flush_timer:
+                self._flush_timer.stop()
+                self._flush_timer.join(timeout=5)
+                self._flush_timer = None
+
+            # Stop the exporter worker
+            if self._exporter:
+                self._exporter.stop_worker()
+                self._exporter = None
+
+            sdk_logger.info("Lumberjack SDK shutdown complete")
+        except Exception as e:
+            sdk_logger.error(f"Error during shutdown: {e}")
 
     @classmethod
     def init(cls, **kwargs: Any) -> None:
         """
-        Initialize the Treebeard class.
+        Initialize the Lumberjack class.
 
-        @see Treebeard.__init__
+        @see Lumberjack.__init__
         """
         cls(**kwargs)  # Triggers __new__ and __init__
 
@@ -442,13 +545,13 @@ class Treebeard:
 
         if self._using_fallback:
             # let's check to see if we've lazy-loaded env vars
-            key = os.getenv('TREEBEARD_API_KEY')
+            key = os.getenv('LUMBERJACK_API_KEY')
             if key and key.strip() != "":
                 # reset env if we've found a key, just to make sure
                 self._using_fallback = False
                 self._env = os.getenv('ENV', self._env)
                 self._endpoint = os.getenv(
-                    'TREEBEARD_API_URL', self._endpoint)
+                    'LUMBERJACK_API_URL', self._endpoint)
                 self._spans_endpoint = (
                     self._endpoint.replace('/logs/batch', '/spans/batch')
                 )
@@ -458,15 +561,15 @@ class Treebeard:
 
                 self._api_key = key.strip()
                 self._log_to_stdout = os.getenv(
-                    'TREEBEARD_LOG_TO_STDOUT', self._log_to_stdout)
+                    'LUMBERJACK_LOG_TO_STDOUT', self._log_to_stdout)
                 self._capture_stdout = os.getenv(
-                    'TREEBEARD_CAPTURE_STDOUT', self._capture_stdout)
+                    'LUMBERJACK_CAPTURE_STDOUT', self._capture_stdout)
 
                 self._stdout_log_level = os.getenv(
-                    'TREEBEARD_STDOUT_LOG_LEVEL', self._stdout_log_level)
+                    'LUMBERJACK_STDOUT_LOG_LEVEL', self._stdout_log_level)
 
                 # Update debug mode and SDK logger level during lazy loading
-                debug_mode_env = os.getenv('TREEBEARD_DEBUG_MODE')
+                debug_mode_env = os.getenv('LUMBERJACK_DEBUG_MODE')
                 debug_mode = debug_mode_env.lower() == 'true' if debug_mode_env else False
                 if debug_mode != self._debug_mode:
                     self._debug_mode = debug_mode
@@ -479,7 +582,7 @@ class Treebeard:
 
                 # Initialize exporter after lazy loading API key
                 if not self._exporter:
-                    self._exporter = TreebeardExporter(
+                    self._exporter = LumberjackExporter(
                         api_key=self._api_key,
                         endpoint=self._endpoint,
                         objects_endpoint=self._objects_endpoint,
@@ -489,12 +592,12 @@ class Treebeard:
 
                 if has_warned:
                     sdk_logger.info(
-                        f"Treebeard lazy-loaded API key: {key} and endpoint: {self._endpoint}.")
+                        f"Lumberjack lazy-loaded API key: {key} and endpoint: {self._endpoint}.")
 
         if not self._initialized:
             if not has_warned:
                 sdk_logger.warning(
-                    "Treebeard is not initialized - logs will be output to standard Python logger")
+                    "Lumberjack is not initialized - logs will be output to standard Python logger")
                 has_warned = True
             self._log_to_fallback(log_entry)
             return
@@ -531,7 +634,7 @@ class Treebeard:
         result[COMPACT_TRACEBACK_KEY] = log_entry.pop(
             TRACEBACK_KEY_RESERVED_V2, '')
         result[COMPACT_SOURCE_KEY] = log_entry.pop(
-            SOURCE_KEY_RESERVED_V2, 'treebeard')
+            SOURCE_KEY_RESERVED_V2, 'lumberjack')
         result[COMPACT_FUNCTION_KEY] = log_entry.pop(
             FUNCTION_KEY_RESERVED_V2, '')
         result[COMPACT_EXEC_TYPE_KEY] = log_entry.pop(
@@ -595,7 +698,7 @@ class Treebeard:
             resource["service.name"] = self._project_name
 
         # Add source as resource attribute
-        source = log_entry.pop(SOURCE_KEY_RESERVED_V2, 'treebeard')
+        source = log_entry.pop(SOURCE_KEY_RESERVED_V2, 'lumberjack')
         resource["source"] = source
 
         if resource:
@@ -603,7 +706,7 @@ class Treebeard:
 
         # InstrumentationScope
         otel_log["InstrumentationScope"] = {
-            "Name": "treebeard-python-sdk",
+            "Name": "lumberjack-python-sdk",
             "Version": "2.0"
         }
 
@@ -744,7 +847,7 @@ class Treebeard:
     def flush(self) -> None:
         if not self._initialized:
             raise RuntimeError(
-                "Treebeard must be initialized before flushing logs")
+                "Lumberjack must be initialized before flushing logs")
 
         logs = self._batch.get_logs()
         count = len(logs)
@@ -755,7 +858,7 @@ class Treebeard:
         return count
 
     def register_object(self, obj: Any = None, **kwargs: Any) -> None:
-        """Register objects for tracking in Treebeard.
+        """Register objects for tracking in Lumberjack.
 
         Args:
             obj: Object to register (optional, can be dict or object with attributes)
@@ -763,7 +866,7 @@ class Treebeard:
         """
         if not self._initialized:
             sdk_logger.warning(
-                "Treebeard is not initialized - object registration will be skipped")
+                "Lumberjack is not initialized - object registration will be skipped")
             return
 
         # Handle single object registration
@@ -913,7 +1016,7 @@ class Treebeard:
         """
         if not self._initialized:
             raise RuntimeError(
-                "Treebeard must be initialized before flushing objects")
+                "Lumberjack must be initialized before flushing objects")
 
         objects = self._object_batch.get_objects()
         count = len(objects)
@@ -936,7 +1039,7 @@ class Treebeard:
         if not self._using_fallback and self._span_batch:
             if self._span_batch.add(span):
                 if not self._exporter:
-                    self._exporter = TreebeardExporter(
+                    self._exporter = LumberjackExporter(
                         api_key=self._api_key,
                         endpoint=self._endpoint,
                         objects_endpoint=self._objects_endpoint,
@@ -954,7 +1057,7 @@ class Treebeard:
         """
         if not self._initialized:
             raise RuntimeError(
-                "Treebeard must be initialized before flushing spans")
+                "Lumberjack must be initialized before flushing spans")
 
         spans = self._span_batch.get_spans()
         count = len(spans)
@@ -1040,7 +1143,7 @@ class Treebeard:
 
     @classmethod
     def register(cls, obj: Any = None, **kwargs: Any) -> None:
-        """Register objects for tracking in Treebeard (class method).
+        """Register objects for tracking in Lumberjack (class method).
 
         Args:
             obj: Object to register (optional, can be dict or object with attributes)

@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from treebeardhq.context import LoggingContext
+from lumberjack_sdk.context import LoggingContext
 
 
 @pytest.mark.usefixtures("reset_context", "clean_modules")

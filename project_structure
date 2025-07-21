@@ -1,6 +1,6 @@
-treebeard/
+lumberjack/
 ├── src/
-│   └── treebeard/
+│   └── lumberjack/
 │       ├── __init__.py
 │       └── core.py
 │       └── context.py

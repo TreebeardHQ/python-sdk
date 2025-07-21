@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from treebeardhq.constants import (
+from lumberjack_sdk.constants import (
     EXEC_TYPE_RESERVED_V2,
     EXEC_VALUE_RESERVED_V2,
     LEVEL_KEY_RESERVED_V2,
@@ -14,23 +14,23 @@ from treebeardhq.constants import (
     TRACE_NAME_KEY_RESERVED_V2,
     TRACEBACK_KEY_RESERVED_V2,
 )
-from treebeardhq.context import LoggingContext
-from treebeardhq.core import Treebeard
-from treebeardhq.log import Log
+from lumberjack_sdk.context import LoggingContext
+from lumberjack_sdk.core import Lumberjack
+from lumberjack_sdk.log import Log
 
 
 @pytest.fixture
-def treebeard():
-    """Setup and teardown for Treebeard instance."""
-    Treebeard.init(api_key="test-key", endpoint="http://test.com")
-    yield Treebeard()
-    Treebeard.reset()
+def lumberjack_instance():
+    """Setup and teardown for Lumberjack instance."""
+    Lumberjack.init(api_key="test-key", endpoint="http://test.com")
+    yield Lumberjack()
+    Lumberjack.reset()
     LoggingContext.clear()
 
 
-def test_log_with_data_dict(treebeard, mocker):
+def test_log_with_data_dict(lumberjack_instance, mocker):
     """Test logging with additional data dictionary."""
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     Log.error("Error occurred", {"error_code": 500, "service": "auth"})
 
@@ -39,9 +39,9 @@ def test_log_with_data_dict(treebeard, mocker):
     assert log_data[MESSAGE_KEY_RESERVED_V2] == "Error occurred"
 
 
-def test_log_with_kwargs(treebeard, mocker):
+def test_log_with_kwargs(lumberjack_instance, mocker):
     """Test logging with keyword arguments."""
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     Log.warning("Resource low", cpu_usage=90, memory=95)
 
@@ -53,9 +53,9 @@ def test_log_with_kwargs(treebeard, mocker):
     assert log_data["memory"] == 95
 
 
-def test_log_with_both_data_and_kwargs(treebeard, mocker):
+def test_log_with_both_data_and_kwargs(lumberjack_instance, mocker):
     """Test logging with both data dict and kwargs."""
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     Log.debug(
         "Debug info",
@@ -71,9 +71,9 @@ def test_log_with_both_data_and_kwargs(treebeard, mocker):
     assert log_data["query_time"] == 15.3
 
 
-def test_log_levels(treebeard, mocker):
+def test_log_levels(lumberjack_instance, mocker):
     """Test all log levels."""
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     levels = ['debug', 'info',
               'warning', 'error']
@@ -92,7 +92,7 @@ def test_log_levels(treebeard, mocker):
 
 @pytest.fixture
 def mock_colored():
-    with patch('treebeardhq.core.colored') as mock:
+    with patch('lumberjack_sdk.core.colored') as mock:
         # Make colored function just return the input string
         mock.side_effect = lambda text, color: text
         yield mock
@@ -107,8 +107,8 @@ def captured_logs(caplog):
 
 def test_fallback_metadata_formatting(captured_logs, mock_colored):
     """Test that metadata is properly formatted in fallback logs."""
-    Treebeard.reset()
-    Treebeard.init()
+    Lumberjack.reset()
+    Lumberjack.init()
 
     with patch("logging.StreamHandler.emit") as mock_emit:
         complex_metadata = {
@@ -134,29 +134,29 @@ def test_fallback_metadata_formatting(captured_logs, mock_colored):
 
 def test_switching_to_api_logging():
     """Test that providing API key switches to API logging mode."""
-    Treebeard.reset()
+    Lumberjack.reset()
 
     # First initialize without API key
-    Treebeard.init()
-    assert Treebeard()._using_fallback
+    Lumberjack.init()
+    assert Lumberjack()._using_fallback
 
     # Reset and initialize with API key
-    Treebeard.reset()
-    Treebeard.init(api_key="test_key", endpoint="http://test.endpoint")
+    Lumberjack.reset()
+    Lumberjack.init(api_key="test_key", endpoint="http://test.endpoint")
 
-    instance = Treebeard()
+    instance = Lumberjack()
     assert not instance._using_fallback
     assert instance._api_key == "test_key"
     assert instance._endpoint == "http://test.endpoint"
 
 
-def test_python_logger_forwarding_basic(treebeard, mocker):
+def test_python_logger_forwarding_basic(lumberjack_instance, mocker):
     """Test basic Python logger forwarding functionality."""
     # Ensure clean state
     Log.disable_python_logger_forwarding()
     LoggingContext.clear()
 
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     # Enable Python logger forwarding
     Log.enable_python_logger_forwarding(level=logging.DEBUG)
@@ -181,13 +181,13 @@ def test_python_logger_forwarding_basic(treebeard, mocker):
     Log.disable_python_logger_forwarding()
 
 
-def test_python_logger_forwarding_with_args(treebeard, mocker):
+def test_python_logger_forwarding_with_args(lumberjack_instance, mocker):
     """Test Python logger forwarding with message arguments."""
     # Ensure clean state
     Log.disable_python_logger_forwarding()
     LoggingContext.clear()
 
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     Log.enable_python_logger_forwarding()
 
@@ -205,9 +205,9 @@ def test_python_logger_forwarding_with_args(treebeard, mocker):
     Log.disable_python_logger_forwarding()
 
 
-def test_python_logger_forwarding_with_exception(treebeard, mocker):
+def test_python_logger_forwarding_with_exception(lumberjack_instance, mocker):
     """Test Python logger forwarding with exception information."""
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     Log.enable_python_logger_forwarding()
 
@@ -230,9 +230,9 @@ def test_python_logger_forwarding_with_exception(treebeard, mocker):
     Log.disable_python_logger_forwarding()
 
 
-def test_python_logger_forwarding_with_extra(treebeard, mocker):
+def test_python_logger_forwarding_with_extra(lumberjack_instance, mocker):
     """Test Python logger forwarding with extra attributes."""
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     Log.enable_python_logger_forwarding()
 
@@ -255,13 +255,13 @@ def test_python_logger_forwarding_with_extra(treebeard, mocker):
     Log.disable_python_logger_forwarding()
 
 
-def test_python_logger_level_filtering(treebeard, mocker):
+def test_python_logger_level_filtering(lumberjack_instance, mocker):
     """Test that Python logger level filtering works correctly."""
     # Ensure clean state
     Log.disable_python_logger_forwarding()
     LoggingContext.clear()
 
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     # Enable forwarding only for WARNING and above
     Log.enable_python_logger_forwarding(level=logging.WARNING)
@@ -302,18 +302,18 @@ def test_python_logger_forwarding_enable_disable():
     assert not Log.is_python_logger_forwarding_enabled()
 
 
-def test_treebeard_init_with_python_logger_capture():
-    """Test Treebeard initialization with Python logger capture enabled."""
-    Treebeard.reset()
+def test_lumberjack_init_with_python_logger_capture():
+    """Test Lumberjack initialization with Python logger capture enabled."""
+    Lumberjack.reset()
 
     # Initialize with Python logger capture enabled
-    Treebeard.init(
+    Lumberjack.init(
         api_key="test_key",
         capture_python_logger=True,
         python_logger_level="INFO"
     )
 
-    instance = Treebeard()
+    instance = Lumberjack()
     assert instance._capture_python_logger
     assert instance._python_logger_level == "INFO"
 
@@ -322,12 +322,12 @@ def test_treebeard_init_with_python_logger_capture():
 
     # Clean up
     Log.disable_python_logger_forwarding()
-    Treebeard.reset()
+    Lumberjack.reset()
 
 
-def test_python_logger_forwarding_without_trace_context(treebeard, mocker):
+def test_python_logger_forwarding_without_trace_context(lumberjack_instance, mocker):
     """Test that Python logger messages get auto-assigned trace_id when no context exists."""
-    mock_add = mocker.patch.object(treebeard, 'add')
+    mock_add = mocker.patch.object(lumberjack_instance, 'add')
 
     Log.enable_python_logger_forwarding()
 
