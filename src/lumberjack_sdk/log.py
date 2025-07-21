@@ -39,7 +39,6 @@ from .context import LoggingContext
 from .core import Lumberjack
 from .internal_utils.fallback_logger import sdk_logger
 
-dev_logger = logging.getLogger("dev")
 
 level_map = {
     logging.DEBUG: 'debug',
@@ -62,6 +61,11 @@ class LumberjackHandler(logging.Handler):
         Args:
             record: The LogRecord instance containing log data
         """
+        # Check if we're already processing a log to prevent recursion
+        if getattr(_handler_guard, 'processing', False):
+            return
+            
+        _handler_guard.processing = True
         try:
             # Skip logs from the SDK itself to avoid infinite recursion
             if (
@@ -70,17 +74,6 @@ class LumberjackHandler(logging.Handler):
                 record.name == 'lumberjack.sdk'
             ):
                 return
-
-            # Map standard Python logging levels to Lumberjack levels
-            level_map = {
-                logging.DEBUG: 'debug',
-                logging.INFO: 'info',
-                logging.WARNING: 'warning',
-                logging.WARN: 'warning',  # deprecated but still used
-                logging.ERROR: 'error',
-                logging.CRITICAL: 'critical',
-                logging.FATAL: 'critical'  # alias for CRITICAL
-            }
 
             # Get the mapped level, default to 'info'
             lumberjack_level = level_map.get(record.levelno, 'info')
@@ -154,10 +147,15 @@ class LumberjackHandler(logging.Handler):
         except Exception as e:
             # Don't let handler errors break the application
             sdk_logger.error(f"Error in LumberjackHandler: {str(e)}")
+        finally:
+            _handler_guard.processing = False
 
 
 # Global handler instance
 _lumberjack_handler: Optional[LumberjackHandler] = None
+
+# Thread-local guard to prevent recursive logging
+_handler_guard = threading.local()
 
 
 masked_terms = {

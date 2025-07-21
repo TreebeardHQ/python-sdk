@@ -5,7 +5,7 @@ package_name = "lumberjack"
 
 setup(
     name=package_name,
-    version="0.4.21",
+    version="0.4.24",
     packages=find_packages(include=[package_name, f"{package_name}.*"]),
     description="Lumberjack logging library",
     author="George Mayer",

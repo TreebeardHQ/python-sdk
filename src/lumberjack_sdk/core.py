@@ -2,6 +2,7 @@
 Core functionality for the lumberjack library.
 """
 import asyncio
+import atexit
 import json
 import logging
 import os
@@ -66,29 +67,48 @@ has_warned = False
 found_api_key = False
 
 
-# Handle shutdown signals
+# Global flag to track if signal handlers are installed
+_signal_handlers_installed = False
+_original_sigint_handler = None
+_original_sigterm_handler = None
+_shutdown_lock = threading.Lock()
+_is_shutting_down = False
 
 
 def _handle_shutdown(sig, frame):
+    """Handle shutdown signals gracefully."""
+    global _is_shutting_down
+
+    with _shutdown_lock:
+        if _is_shutting_down:
+            # Already shutting down, ignore duplicate signals
+            return
+        _is_shutting_down = True
+
     curr_time = round(time.time() * 1000)
     sdk_logger.info(
-        "Shutdown signal received, flushing logs, objects, and spans...")
-    lumberjack_instance = Lumberjack()
-    lumberjack_instance.flush()
-    lumberjack_instance.flush_objects()
-    lumberjack_instance.flush_spans()
+        f"Shutdown signal {sig} received, flushing logs, objects, and spans...")
 
-    if Lumberjack._instance and Lumberjack._instance._flush_timer:
-        Lumberjack._instance._flush_timer.stop()
-    if Lumberjack._instance and Lumberjack._instance._exporter:
-        Lumberjack._instance._exporter.stop_worker()
+    try:
+        if Lumberjack._instance:
+            Lumberjack._instance.shutdown()
+    except Exception as e:
+        sdk_logger.error(f"Error during shutdown: {e}")
 
     sdk_logger.info(
         f"Shutdown complete, took {round(time.time() * 1000) - curr_time} ms")
 
+    # Call original handlers if they exist
+    if sig == signal.SIGINT and _original_sigint_handler:
+        if callable(_original_sigint_handler):
+            _original_sigint_handler(sig, frame)
+    elif sig == signal.SIGTERM and _original_sigterm_handler:
+        if callable(_original_sigterm_handler):
+            _original_sigterm_handler(sig, frame)
+    else:
+        # Default behavior - exit
+        sys.exit(0)
 
-signal.signal(signal.SIGINT, _handle_shutdown)
-signal.signal(signal.SIGTERM, _handle_shutdown)
 
 # Constants
 DEFAULT_BATCH_SIZE = 500
@@ -146,6 +166,7 @@ class Lumberjack:
         code_snippet_max_frames: Optional[int] = None,
         code_snippet_exclude_patterns: Optional[List[str]] = None,
         debug_mode: Optional[bool] = None,
+        install_signal_handlers: Optional[bool] = None,
     ):
         """
         Initialize the Lumberjack class.
@@ -179,6 +200,10 @@ class Lumberjack:
                 Defaults to None (captures from root logger).
             debug_mode: Whether to enable debug mode. When True, sets the SDK logger level to DEBUG.
                 Can also be set via LUMBERJACK_DEBUG_MODE environment variable.
+            install_signal_handlers: Whether to install SIGINT/SIGTERM handlers for graceful shutdown.
+                Defaults to True. Set to False when using in web frameworks like Flask that have
+                their own signal handling. Can also be set via LUMBERJACK_INSTALL_SIGNAL_HANDLERS
+                environment variable.
         """
 
         # accept some of these variables even if we've already initialized automatically
@@ -322,6 +347,83 @@ class Lumberjack:
 
         # Print SDK version for debugging
         sdk_logger.info(f"Lumberjack SDK version: {__version__}")
+
+        # Install signal handlers if requested
+        install_handlers_env = os.getenv('LUMBERJACK_INSTALL_SIGNAL_HANDLERS')
+        self._install_signal_handlers = (
+            install_signal_handlers if install_signal_handlers is not None
+            else (install_handlers_env.lower() != 'false' if install_handlers_env else True)
+        )
+
+        if self._install_signal_handlers:
+            self._setup_signal_handlers()
+
+        # Register atexit handler as a fallback
+        atexit.register(self._atexit_handler)
+
+    def _setup_signal_handlers(self) -> None:
+        """Install signal handlers for graceful shutdown."""
+        global _signal_handlers_installed, _original_sigint_handler, _original_sigterm_handler
+
+        if not _signal_handlers_installed:
+            # Save original handlers
+            _original_sigint_handler = signal.signal(
+                signal.SIGINT, _handle_shutdown)
+            _original_sigterm_handler = signal.signal(
+                signal.SIGTERM, _handle_shutdown)
+            _signal_handlers_installed = True
+            sdk_logger.debug("Signal handlers installed for graceful shutdown")
+
+    def _atexit_handler(self) -> None:
+        """Handle cleanup at exit time."""
+        global _is_shutting_down
+
+        with _shutdown_lock:
+            if _is_shutting_down:
+                return
+            _is_shutting_down = True
+
+        try:
+            self.shutdown()
+        except Exception as e:
+            sdk_logger.error(f"Error in atexit handler: {e}")
+
+    def shutdown(self) -> None:
+        """
+        Perform graceful shutdown of the SDK.
+
+        This method:
+        - Flushes all pending logs, objects, and spans
+        - Stops the flush timer
+        - Stops the exporter worker thread
+        - Cleans up resources
+
+        Call this method when your application is shutting down to ensure
+        all data is sent to Lumberjack.
+        """
+        if not self._initialized:
+            return
+
+        try:
+            # Flush all pending data
+            self.flush()
+            self.flush_objects()
+            self.flush_spans()
+
+            # Stop the flush timer
+            if self._flush_timer:
+                self._flush_timer.stop()
+                self._flush_timer.join(timeout=5)
+                self._flush_timer = None
+
+            # Stop the exporter worker
+            if self._exporter:
+                self._exporter.stop_worker()
+                self._exporter = None
+
+            sdk_logger.info("Lumberjack SDK shutdown complete")
+        except Exception as e:
+            sdk_logger.error(f"Error during shutdown: {e}")
 
     @classmethod
     def init(cls, **kwargs: Any) -> None:

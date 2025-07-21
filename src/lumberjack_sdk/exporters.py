@@ -38,7 +38,6 @@ class LogSenderWorker(threading.Thread):
 
     def stop(self) -> None:
         self._stop_event.set()
-        self._send_queue.put(None)
 
 
 class LumberjackExporter:

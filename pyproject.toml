@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lumberjack_sdk"
-version = "0.4.21"
+version = "0.4.24"
 authors = [
     { name = "George Mayer", email = "george@treebeardhq.com" },
 ]
